@@ -1,7 +1,7 @@
 {
     "acados_include_path": "/home/uav/acados/include",
     "acados_lib_path": "/home/uav/acados/lib",
-    "code_export_directory": "/home/uav/catkin_ws/src/MPCC_PMM/MPCC/c_generated_code",
+    "code_export_directory": "/home/uav/catkin_ws/src/DQ-MPCC/c_generated_code",
     "constraints": {
         "C": [],
         "C_e": [],

@@ -11,7 +11,8 @@ from plotting_utils import (
     plot_cost_orientation, plot_cost_translation, plot_cost_control,
     plot_norm_quat, plot_norm_real, plot_norm_dual,
     plot_lyapunov_dot, plot_lyapunov, plot_time,
-    plot_curvature_vs_velocity
+    plot_curvature_vs_velocity,
+    plot_trajectory_3d, plot_trajectory_xy, plot_trajectory_xz,
 )
 from nav_msgs.msg import Odometry
 from functions import dualquat_from_pose_casadi
@@ -1009,166 +1010,20 @@ def main(odom_pub_1, odom_pub_2, trajec_pub, L, x0, v_max, a_max, n, initial):
     plot_time(fig105, ax105, delta_t[:, :last_active_idx], t_sample[:, :last_active_idx], t_active, "10_Computational_Time", folder_path)
     
     # ============ MPCC VELOCITY COMPARISON + CURVATURE PLOT ============
-    # Figura 11: velocidades (arriba) + radio de curvatura (abajo), eje X compartido
     u_s_active    = u_s_history.flatten()[0:last_active_idx]
     v_real_active = v_real_history.flatten()[0:last_active_idx]
     v_tang_active = v_tangent_history.flatten()[0:last_active_idx]
     s_active      = s_history[0:last_active_idx]
+    plot_curvature_vs_velocity(t_active, s_active, u_s_active, v_tang_active,
+                               position_by_arc_length,
+                               "11_MPCC_Velocity_Comparison", folder_path)
 
-    # Calcular curvatura κ = 1/R a lo largo del recorrido
-    ds = 0.1
-    kappa_arr = np.zeros(last_active_idx)
-    for i in range(last_active_idx):
-        s = s_active[i]
-        p_fwd  = np.array(position_by_arc_length(s + ds))
-        p_bwd  = np.array(position_by_arc_length(max(s - ds, 0.0)))
-        p_fwd2 = np.array(position_by_arc_length(s + 2*ds))
-        p_bwd2 = np.array(position_by_arc_length(max(s - 2*ds, 0.0)))
-        p_mid  = np.array(position_by_arc_length(s))
-        r_prime  = (p_fwd - p_bwd) / (2*ds)
-        r_pprime = (p_fwd2 - 2*p_mid + p_bwd2) / (4*ds**2)
-        cross = np.cross(r_prime, r_pprime)
-        kappa_arr[i] = np.linalg.norm(cross) / (np.linalg.norm(r_prime)**3 + 1e-9)
-    # Suavizar con ventana amplia
-    kernel      = np.ones(51) / 51
-    kappa_smooth = np.convolve(kappa_arr, kernel, mode='same')
-
-    import matplotlib.gridspec as gridspec
-    fig_vel = plt.figure(figsize=(13, 7))
-    gs = gridspec.GridSpec(2, 1, hspace=0.08, height_ratios=[2, 1])
-
-    # Subplot superior: velocidades
-    ax_vel = fig_vel.add_subplot(gs[0])
-    ax_vel.plot(t_active, u_s_active,    color='#1D2121', linewidth=1.5, ls='-',  label=r'$u_s^*$ (punto virtual)')
-    ax_vel.plot(t_active, v_real_active, color='#C43C29', linewidth=1.5, ls='--', label=r'$\|v\|$ (velocidad real)')
-    ax_vel.plot(t_active, v_tang_active, color='#2E86AB', linewidth=1.5, ls=':',  label=r'$v_{tang}$ (componente tangente)')
-    ax_vel.axhline(y=u_s_max, color='k', linestyle='--', alpha=0.4, label=f'$u_{{s,max}}$ = {u_s_max} m/s')
-    ax_vel.set_ylabel(r'Velocity [m/s]')
-    ax_vel.set_xticklabels([])
-    ax_vel.set_xlim([t_active[0], t_active[-1]])
-    ax_vel.legend(loc='upper right', frameon=True, fancybox=True, shadow=False,
-                  borderpad=0.5, labelspacing=0.5, handlelength=3)
-    ax_vel.grid(color='#949494', linestyle='-.', linewidth=0.5)
-
-    # Subplot inferior: curvatura κ
-    ax_cur = fig_vel.add_subplot(gs[1], sharex=ax_vel)
-    ax_cur.fill_between(t_active, kappa_smooth, alpha=0.18, color='#7B4FA6')
-    cur_line, = ax_cur.plot(t_active, kappa_smooth, color='#7B4FA6', lw=1.5, ls='-')
-    ax_cur.set_ylabel(r'$\kappa$ [1/m]')
-    ax_cur.set_xlabel(r'$Time~[s]$', labelpad=5)
-    ax_cur.set_xlim([t_active[0], t_active[-1]])
-    ax_cur.legend([cur_line], [r'$\kappa(s)$ (curvatura)'],
-                  loc='upper right', frameon=True, fancybox=True, shadow=False,
-                  borderpad=0.5, labelspacing=0.5, handlelength=3)
-    ax_cur.grid(color='#949494', linestyle='-.', linewidth=0.5)
-
-    fig_vel.suptitle('MPCC: Velocidad vs Curvatura de la Trayectoria', fontsize=12)
-    fig_vel.savefig(folder_path + "11_MPCC_Velocity_Comparison.png", dpi=150, bbox_inches='tight')
-    fig_vel.savefig(folder_path + "11_MPCC_Velocity_Comparison.pdf", bbox_inches='tight')
-    plt.close(fig_vel)
-    
     # ============ FIGURA 12: TRAYECTORIA 3D + VISTAS ORTOGONALES ============
-    from mpl_toolkits.mplot3d import Axes3D
-    
-    # Extraer posiciones 3D (solo período activo)
-    x_desired = Q2_trans_data[1, :last_active_idx+1]
-    y_desired = Q2_trans_data[2, :last_active_idx+1]
-    z_desired = Q2_trans_data[3, :last_active_idx+1]
-    
-    x_actual = Q1_trans_data[1, :last_active_idx+1]
-    y_actual = Q1_trans_data[2, :last_active_idx+1]
-    z_actual = Q1_trans_data[3, :last_active_idx+1]
-    
-    # --- FIGURA 12a: Vista 3D isométrica ---
-    fig_3d = plt.figure(figsize=(10, 8))
-    ax_3d = fig_3d.add_subplot(111, projection='3d')
-    
-    ax_3d.plot(x_desired, y_desired, z_desired, color='#1D2121', linewidth=2.0, 
-               label='Reference', alpha=0.7, linestyle='--')
-    ax_3d.plot(x_actual, y_actual, z_actual, color='#C43C29', linewidth=2.5, 
-               label='MPCC', alpha=0.9)
-    
-    # Marcadores inicio/final
-    ax_3d.scatter([x_actual[0]], [y_actual[0]], [z_actual[0]], 
-                  color='#2E86AB', s=120, marker='o', label='Start', zorder=5, edgecolors='black', linewidths=1.2)
-    ax_3d.scatter([x_actual[-1]], [y_actual[-1]], [z_actual[-1]], 
-                  color='#E63946', s=120, marker='s', label='End', zorder=5, edgecolors='black', linewidths=1.2)
-    
-    ax_3d.set_xlabel(r'$x~[m]$', fontsize=11, labelpad=8)
-    ax_3d.set_ylabel(r'$y~[m]$', fontsize=11, labelpad=8)
-    ax_3d.set_zlabel(r'$z~[m]$', fontsize=11, labelpad=8)
-    ax_3d.set_title('3D Trajectory Tracking', fontsize=13, pad=15)
-    ax_3d.legend(loc='upper left', frameon=True, fancybox=True, fontsize=9)
-    ax_3d.grid(True, alpha=0.25, linestyle='--', linewidth=0.5)
-    ax_3d.view_init(elev=25, azim=45)
-    
-    # Aspecto proporcional
-    max_range = np.array([x_actual.max()-x_actual.min(), 
-                          y_actual.max()-y_actual.min(), 
-                          z_actual.max()-z_actual.min()]).max() / 2.0
-    mid_x = (x_actual.max()+x_actual.min()) * 0.5
-    mid_y = (y_actual.max()+y_actual.min()) * 0.5
-    mid_z = (z_actual.max()+z_actual.min()) * 0.5
-    ax_3d.set_xlim(mid_x - max_range, mid_x + max_range)
-    ax_3d.set_ylim(mid_y - max_range, mid_y + max_range)
-    ax_3d.set_zlim(mid_z - max_range, mid_z + max_range)
-    
-    fig_3d.tight_layout()
-    fig_3d.savefig(folder_path + "12a_Trajectory_3D_Isometric.png", dpi=150, bbox_inches='tight')
-    fig_3d.savefig(folder_path + "12a_Trajectory_3D_Isometric.pdf", bbox_inches='tight')
-    plt.close(fig_3d)
-    
-    # --- FIGURA 12b: Vista plano XY (top view) ---
-    fig_xy = plt.figure(figsize=(10, 8))
-    ax_xy = fig_xy.add_subplot(111)
-    
-    ax_xy.plot(x_desired, y_desired, color='#1D2121', linewidth=2.0, 
-               label='Reference', alpha=0.7, linestyle='--')
-    ax_xy.plot(x_actual, y_actual, color='#C43C29', linewidth=2.5, 
-               label='MPCC', alpha=0.9)
-    
-    ax_xy.scatter([x_actual[0]], [y_actual[0]], 
-                  color='#2E86AB', s=120, marker='o', label='Start', zorder=5, edgecolors='black', linewidths=1.2)
-    ax_xy.scatter([x_actual[-1]], [y_actual[-1]], 
-                  color='#E63946', s=120, marker='s', label='End', zorder=5, edgecolors='black', linewidths=1.2)
-    
-    ax_xy.set_xlabel(r'$x~[m]$', fontsize=12)
-    ax_xy.set_ylabel(r'$y~[m]$', fontsize=12)
-    ax_xy.set_title('XY Plane (Top View)', fontsize=13)
-    ax_xy.legend(loc='upper right', frameon=True, fancybox=True, fontsize=10)
-    ax_xy.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax_xy.axis('equal')
-    
-    fig_xy.tight_layout()
-    fig_xy.savefig(folder_path + "12b_Trajectory_XY_Plane.png", dpi=150, bbox_inches='tight')
-    fig_xy.savefig(folder_path + "12b_Trajectory_XY_Plane.pdf", bbox_inches='tight')
-    plt.close(fig_xy)
-    
-    # --- FIGURA 12c: Vista plano XZ (side view) ---
-    fig_xz = plt.figure(figsize=(10, 6))
-    ax_xz = fig_xz.add_subplot(111)
-    
-    ax_xz.plot(x_desired, z_desired, color='#1D2121', linewidth=2.0, 
-               label='Reference', alpha=0.7, linestyle='--')
-    ax_xz.plot(x_actual, z_actual, color='#C43C29', linewidth=2.5, 
-               label='MPCC', alpha=0.9)
-    
-    ax_xz.scatter([x_actual[0]], [z_actual[0]], 
-                  color='#2E86AB', s=120, marker='o', label='Start', zorder=5, edgecolors='black', linewidths=1.2)
-    ax_xz.scatter([x_actual[-1]], [z_actual[-1]], 
-                  color='#E63946', s=120, marker='s', label='End', zorder=5, edgecolors='black', linewidths=1.2)
-    
-    ax_xz.set_xlabel(r'$x~[m]$', fontsize=12)
-    ax_xz.set_ylabel(r'$z~[m]$', fontsize=12)
-    ax_xz.set_title('XZ Plane (Side View)', fontsize=13)
-    ax_xz.legend(loc='upper right', frameon=True, fancybox=True, fontsize=10)
-    ax_xz.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
-    ax_xz.axis('equal')
-    
-    fig_xz.tight_layout()
-    fig_xz.savefig(folder_path + "12c_Trajectory_XZ_Plane.png", dpi=150, bbox_inches='tight')
-    fig_xz.savefig(folder_path + "12c_Trajectory_XZ_Plane.pdf", bbox_inches='tight')
-    plt.close(fig_xz)
+    Q1_active = Q1_trans_data[:, :last_active_idx + 1]
+    Q2_active = Q2_trans_data[:, :last_active_idx + 1]
+    plot_trajectory_3d(Q1_active, Q2_active, "12a_Trajectory_3D_Isometric", folder_path)
+    plot_trajectory_xy(Q1_active, Q2_active, "12b_Trajectory_XY_Plane",     folder_path)
+    plot_trajectory_xz(Q1_active, Q2_active, "12c_Trajectory_XZ_Plane",     folder_path)
     
     # Estadísticas finales (solo del período activo)
     u_s_active_stats = u_s_history.flatten()[active_mask]

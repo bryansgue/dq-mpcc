@@ -1461,3 +1461,143 @@ def plot_curvature_vs_velocity(t_active, s_history, u_s_history, v_tang_history,
     fig.savefig(png_file_path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     return None
+
+
+def plot_trajectory_3d(Q1_trans_data, Q2_trans_data, name, path):
+    """
+    Vista isométrica 3D: trayectoria real vs referencia.
+
+    Args:
+        Q1_trans_data: trayectoria real      [4, N]  (filas: w, x, y, z)
+        Q2_trans_data: trayectoria referencia [4, N]
+        name: nombre de archivo sin extensión
+        path: directorio de guardado
+    """
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+    x_des = Q2_trans_data[1]
+    y_des = Q2_trans_data[2]
+    z_des = Q2_trans_data[3]
+    x_act = Q1_trans_data[1]
+    y_act = Q1_trans_data[2]
+    z_act = Q1_trans_data[3]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax  = fig.add_subplot(111, projection='3d')
+
+    ax.plot(x_des, y_des, z_des, color='#1D2121', linewidth=2.0,
+            label='Reference', alpha=0.7, linestyle='--')
+    ax.plot(x_act, y_act, z_act, color='#C43C29', linewidth=2.5,
+            label='MPCC', alpha=0.9)
+    ax.scatter([x_act[0]],  [y_act[0]],  [z_act[0]],
+               color='#2E86AB', s=120, marker='o', label='Start',
+               zorder=5, edgecolors='black', linewidths=1.2)
+    ax.scatter([x_act[-1]], [y_act[-1]], [z_act[-1]],
+               color='#E63946', s=120, marker='s', label='End',
+               zorder=5, edgecolors='black', linewidths=1.2)
+
+    ax.set_xlabel(r'$x~[m]$', fontsize=11, labelpad=8)
+    ax.set_ylabel(r'$y~[m]$', fontsize=11, labelpad=8)
+    ax.set_zlabel(r'$z~[m]$', fontsize=11, labelpad=8)
+    ax.set_title('3D Trajectory Tracking', fontsize=13, pad=15)
+    ax.legend(loc='upper left', frameon=True, fancybox=True, fontsize=9)
+    ax.grid(True, alpha=0.25, linestyle='--', linewidth=0.5)
+    ax.view_init(elev=25, azim=45)
+
+    max_range = np.array([x_act.max()-x_act.min(),
+                          y_act.max()-y_act.min(),
+                          z_act.max()-z_act.min()]).max() / 2.0
+    mid_x = (x_act.max()+x_act.min()) * 0.5
+    mid_y = (y_act.max()+y_act.min()) * 0.5
+    mid_z = (z_act.max()+z_act.min()) * 0.5
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(path, name + ".pdf"), bbox_inches='tight')
+    fig.savefig(os.path.join(path, name + ".png"), dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return None
+
+
+def plot_trajectory_xy(Q1_trans_data, Q2_trans_data, name, path):
+    """
+    Vista superior (plano XY): trayectoria real vs referencia.
+
+    Args:
+        Q1_trans_data: trayectoria real      [4, N]
+        Q2_trans_data: trayectoria referencia [4, N]
+        name: nombre de archivo sin extensión
+        path: directorio de guardado
+    """
+    x_des = Q2_trans_data[1]
+    y_des = Q2_trans_data[2]
+    x_act = Q1_trans_data[1]
+    y_act = Q1_trans_data[2]
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    ax.plot(x_des, y_des, color='#1D2121', linewidth=2.0,
+            label='Reference', alpha=0.7, linestyle='--')
+    ax.plot(x_act, y_act, color='#C43C29', linewidth=2.5,
+            label='MPCC', alpha=0.9)
+    ax.scatter([x_act[0]],  [y_act[0]],
+               color='#2E86AB', s=120, marker='o', label='Start',
+               zorder=5, edgecolors='black', linewidths=1.2)
+    ax.scatter([x_act[-1]], [y_act[-1]],
+               color='#E63946', s=120, marker='s', label='End',
+               zorder=5, edgecolors='black', linewidths=1.2)
+
+    ax.set_xlabel(r'$x~[m]$', fontsize=12)
+    ax.set_ylabel(r'$y~[m]$', fontsize=12)
+    ax.set_title('XY Plane — Top View', fontsize=13)
+    ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=10)
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+    ax.axis('equal')
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(path, name + ".pdf"), bbox_inches='tight')
+    fig.savefig(os.path.join(path, name + ".png"), dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return None
+
+
+def plot_trajectory_xz(Q1_trans_data, Q2_trans_data, name, path):
+    """
+    Vista lateral (plano XZ): trayectoria real vs referencia.
+
+    Args:
+        Q1_trans_data: trayectoria real      [4, N]
+        Q2_trans_data: trayectoria referencia [4, N]
+        name: nombre de archivo sin extensión
+        path: directorio de guardado
+    """
+    x_des = Q2_trans_data[1]
+    z_des = Q2_trans_data[3]
+    x_act = Q1_trans_data[1]
+    z_act = Q1_trans_data[3]
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x_des, z_des, color='#1D2121', linewidth=2.0,
+            label='Reference', alpha=0.7, linestyle='--')
+    ax.plot(x_act, z_act, color='#C43C29', linewidth=2.5,
+            label='MPCC', alpha=0.9)
+    ax.scatter([x_act[0]],  [z_act[0]],
+               color='#2E86AB', s=120, marker='o', label='Start',
+               zorder=5, edgecolors='black', linewidths=1.2)
+    ax.scatter([x_act[-1]], [z_act[-1]],
+               color='#E63946', s=120, marker='s', label='End',
+               zorder=5, edgecolors='black', linewidths=1.2)
+
+    ax.set_xlabel(r'$x~[m]$', fontsize=12)
+    ax.set_ylabel(r'$z~[m]$', fontsize=12)
+    ax.set_title('XZ Plane — Side View', fontsize=13)
+    ax.legend(loc='upper right', frameon=True, fancybox=True, fontsize=10)
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+    ax.axis('equal')
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(path, name + ".pdf"), bbox_inches='tight')
+    fig.savefig(os.path.join(path, name + ".png"), dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    return None
