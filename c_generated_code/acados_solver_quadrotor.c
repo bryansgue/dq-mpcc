@@ -466,30 +466,55 @@ void quadrotor_acados_setup_nlp_in(quadrotor_solver_capsule* capsule, const int 
     {
         // set time_steps
     
-        double time_step = 0.03125;
+        double time_step = 0.012195121951219513;
         for (int i = 0; i < N; i++)
         {
             ocp_nlp_in_set(nlp_config, nlp_dims, nlp_in, i, "Ts", &time_step);
         }
         // set cost scaling
         double* cost_scaling = malloc((N+1)*sizeof(double));
-        cost_scaling[0] = 0.03125;
-        cost_scaling[1] = 0.03125;
-        cost_scaling[2] = 0.03125;
-        cost_scaling[3] = 0.03125;
-        cost_scaling[4] = 0.03125;
-        cost_scaling[5] = 0.03125;
-        cost_scaling[6] = 0.03125;
-        cost_scaling[7] = 0.03125;
-        cost_scaling[8] = 0.03125;
-        cost_scaling[9] = 0.03125;
-        cost_scaling[10] = 0.03125;
-        cost_scaling[11] = 0.03125;
-        cost_scaling[12] = 0.03125;
-        cost_scaling[13] = 0.03125;
-        cost_scaling[14] = 0.03125;
-        cost_scaling[15] = 0.03125;
-        cost_scaling[16] = 1;
+        cost_scaling[0] = 0.012195121951219513;
+        cost_scaling[1] = 0.012195121951219513;
+        cost_scaling[2] = 0.012195121951219513;
+        cost_scaling[3] = 0.012195121951219513;
+        cost_scaling[4] = 0.012195121951219513;
+        cost_scaling[5] = 0.012195121951219513;
+        cost_scaling[6] = 0.012195121951219513;
+        cost_scaling[7] = 0.012195121951219513;
+        cost_scaling[8] = 0.012195121951219513;
+        cost_scaling[9] = 0.012195121951219513;
+        cost_scaling[10] = 0.012195121951219513;
+        cost_scaling[11] = 0.012195121951219513;
+        cost_scaling[12] = 0.012195121951219513;
+        cost_scaling[13] = 0.012195121951219513;
+        cost_scaling[14] = 0.012195121951219513;
+        cost_scaling[15] = 0.012195121951219513;
+        cost_scaling[16] = 0.012195121951219513;
+        cost_scaling[17] = 0.012195121951219513;
+        cost_scaling[18] = 0.012195121951219513;
+        cost_scaling[19] = 0.012195121951219513;
+        cost_scaling[20] = 0.012195121951219513;
+        cost_scaling[21] = 0.012195121951219513;
+        cost_scaling[22] = 0.012195121951219513;
+        cost_scaling[23] = 0.012195121951219513;
+        cost_scaling[24] = 0.012195121951219513;
+        cost_scaling[25] = 0.012195121951219513;
+        cost_scaling[26] = 0.012195121951219513;
+        cost_scaling[27] = 0.012195121951219513;
+        cost_scaling[28] = 0.012195121951219513;
+        cost_scaling[29] = 0.012195121951219513;
+        cost_scaling[30] = 0.012195121951219513;
+        cost_scaling[31] = 0.012195121951219513;
+        cost_scaling[32] = 0.012195121951219513;
+        cost_scaling[33] = 0.012195121951219513;
+        cost_scaling[34] = 0.012195121951219513;
+        cost_scaling[35] = 0.012195121951219513;
+        cost_scaling[36] = 0.012195121951219513;
+        cost_scaling[37] = 0.012195121951219513;
+        cost_scaling[38] = 0.012195121951219513;
+        cost_scaling[39] = 0.012195121951219513;
+        cost_scaling[40] = 0.012195121951219513;
+        cost_scaling[41] = 1;
         for (int i = 0; i <= N; i++)
         {
             ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, i, "scaling", &cost_scaling[i]);
@@ -578,18 +603,18 @@ void quadrotor_acados_setup_nlp_in(quadrotor_solver_capsule* capsule, const int 
     double* lbx0 = lubx0;
     double* ubx0 = lubx0 + NBX0;
     // change only the non-zero elements:
-    lbx0[0] = 0.22689416444719493;
-    ubx0[0] = 0.22689416444719493;
+    lbx0[0] = -0.00000000000000005558076264950834;
+    ubx0[0] = -0.00000000000000005558076264950834;
     lbx0[3] = 0.9739194207632424;
     ubx0[3] = 0.9739194207632424;
     lbx0[4] = -0.9739194207632426;
     ubx0[4] = -0.9739194207632426;
-    lbx0[5] = -0.0000000000000000362609391041742;
-    ubx0[5] = -0.0000000000000000362609391041742;
-    lbx0[6] = 0.00000000000000003316458800184621;
-    ubx0[6] = 0.00000000000000003316458800184621;
-    lbx0[7] = 0.22689416444719496;
-    ubx0[7] = 0.22689416444719496;
+    lbx0[5] = -0.000000000000000027065592082594205;
+    ubx0[5] = -0.000000000000000027065592082594205;
+    lbx0[6] = 0.000000000000000039470063352195236;
+    ubx0[6] = 0.000000000000000039470063352195236;
+    lbx0[7] = -0.00000000000000005558076264950835;
+    ubx0[7] = -0.00000000000000005558076264950835;
 
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "idxbx", idxbx0);
     ocp_nlp_constraints_model_set(nlp_config, nlp_dims, nlp_in, nlp_out, 0, "lbx", lbx0);
@@ -870,12 +895,12 @@ void quadrotor_acados_set_nlp_out(quadrotor_solver_capsule* capsule)
     double* x0 = xu0;
 
     // initialize with x0
-    x0[0] = 0.22689416444719493;
+    x0[0] = -0.00000000000000005558076264950834;
     x0[3] = 0.9739194207632424;
     x0[4] = -0.9739194207632426;
-    x0[5] = -0.0000000000000000362609391041742;
-    x0[6] = 0.00000000000000003316458800184621;
-    x0[7] = 0.22689416444719496;
+    x0[5] = -0.000000000000000027065592082594205;
+    x0[6] = 0.000000000000000039470063352195236;
+    x0[7] = -0.00000000000000005558076264950835;
 
 
     double* u0 = xu0 + NX;

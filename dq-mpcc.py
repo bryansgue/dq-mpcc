@@ -378,7 +378,7 @@ def main(odom_pub_1, odom_pub_2, trajec_pub, L, x0, v_max, a_max, n, initial):
     # Sample Time Defintion
     t_final = 30
     # Sample time
-    frec= 30
+    frec= 80
     t_s = 1/frec
 
     # ============ CONFIGURACIÓN DEL EXPERIMENTO MPCC ============
@@ -559,13 +559,14 @@ def main(odom_pub_1, odom_pub_2, trajec_pub, L, x0, v_max, a_max, n, initial):
     quat_1_d_msg = Odometry()
     
     # Defining initial condition of the system and verify properties
-    tx1 = x0[0]
-    ty1 = x0[1]
-    tz1 = x0[2]
-    qw1 = x0[3]
+
+    qw1 = x0[1]
     qx1 = x0[4]
     qy1 = x0[5]
     qz1 = x0[6]
+    tx1 = x0[0]
+    ty1 = x0[1]
+    tz1 = x0[2]
 
     # Initial Dualquaternion
     dual_1 = dualquat_from_pose(qw1, qx1, qy1,  qz1, tx1, ty1, tz1)
@@ -951,16 +952,22 @@ def main(odom_pub_1, odom_pub_2, trajec_pub, L, x0, v_max, a_max, n, initial):
     total_cost = total_cost/np.max(total_cost)
 
     # ============================================================
-    # ÍNDICE DE PARTE ACTIVA (solo hasta que termina el recorrido)
-    # Se usa en TODAS las gráficas para mostrar solo el experimento real
+    # ÍNDICE DE PARTE ACTIVA (solo hasta donde el dron realmente llegó)
+    # completion_step es el paso k exacto donde se completó el recorrido
+    # Q1_trans_data se llena en k+1, así que el último dato real es completion_step
     # ============================================================
     t_plot = t[0:u_s_history.shape[1]]
-    active_mask = u_s_history.flatten() > 0.1
-    if np.any(active_mask):
-        last_active_idx = np.where(active_mask)[0][-1] + 10  # +10 para ver la transición
-        last_active_idx = min(last_active_idx, len(t_plot))
+    active_mask = u_s_history.flatten() > 0.1  # siempre definida para estadísticas
+    if completion_step is not None:
+        # Usar el paso de completación exacto: datos reales hasta completion_step (inclusive)
+        last_active_idx = completion_step
     else:
-        last_active_idx = len(t_plot)
+        # Fallback: buscar por máscara de actividad si no hubo completación
+        if np.any(active_mask):
+            last_active_idx = np.where(active_mask)[0][-1] + 1
+        else:
+            last_active_idx = len(t_plot)
+    last_active_idx = min(last_active_idx, len(t_plot))
     t_active = t_plot[0:last_active_idx]
 
     # ============================================================
