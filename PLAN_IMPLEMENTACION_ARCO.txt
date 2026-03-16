@@ -1,0 +1,140 @@
+================================================================================
+PLAN DE IMPLEMENTACIÓN: MPCC CON PARAMETRIZACIÓN DINÁMICA POR LONGITUD DE ARCO
+================================================================================
+
+OBJETIVO:
+Permitir que el MPC elija la velocidad de progreso sobre la trayectoria (ds/dt)
+en lugar de tenerla fija en tiempo. Esto desacopla tiempo y arco.
+
+================================================================================
+CAMBIOS NECESARIOS:
+================================================================================
+
+1. ode_acados.py
+   - Agregar estado adicional: s (longitud de arco)
+   - Dinámica: ds/dt = u_s (velocidad de progreso, nueva variable de control)
+   - Modificar quadrotorModel() para incluir s como estado
+
+2. nmpc_acados.py
+   - Agregar u_s como variable de control (5 entradas en lugar de 4)
+   - Restricciones: 0 <= u_s <= u_s_max (ej: 2.0 m/s)
+   - Costo: penalizar u_s lenta o recompensar u_s rápida
+   - Parámetros: incluir spline_t para mapeo s->t
+
+3. MPC2.py
+   - Mantener variable s_current en el loop
+   - Después de cada iteración: s_current += u_s_optimal * dt
+   - Reconstruir X_d[:, k+j] dinámicamente usando s_current
+   - Usar spline_t para mapear s -> t -> referencias
+
+================================================================================
+ESTRUCTURA DE DATOS:
+================================================================================
+
+Estado del Sistema (x): [14 + 1]
+  ├─ Cuaternión real (4)
+  ├─ Cuaternión dual (4)
+  ├─ Velocidad angular (3)
+  ├─ Velocidad lineal (3)
+  └─ Arco s (1) ← NUEVO
+
+Control (u): [4 + 1]
+  ├─ Empuje F (1)
+  ├─ Torques τ (3)
+  └─ Velocidad de arco u_s (1) ← NUEVO
+
+Parámetros (p): [18 + 2]
+  ├─ Pose deseada: q_d, p_d (8)
+  ├─ Velocidades deseadas: w_d, v_d (6)
+  ├─ Entrada nominal: u_nominal (4)
+  ├─ Spline t->s como función (pasada directamente)
+  └─ Arco actual s (1) ← NUEVO (para predicción)
+
+================================================================================
+FLUJO PRINCIPAL EN CADA ITERACIÓN:
+================================================================================
+
+Iteración k:
+  1. Estado actual: X[:, k], arco: s_k
+  2. MPC resuelve con horizonte N:
+     - Entrada: X[:, k], referencias parametrizadas en s_k
+     - Optimiza: u[0:4] (thrust+torques) y u_s (velocidad de arco)
+  3. Obtiene: u_optimal = [F, τx, τy, τz, u_s]
+  4. Integración:
+     - Posición/orientación: usando dinámicas RK4 con u[0:4]
+     - Arco: s_{k+1} = s_k + u_s * dt
+  5. Construcción de referencias para k+1:
+     - Para j=0 a N: s_pred = s_{k+1} + j*dt*u_s_nominal
+     - t_ref = spline_t(s_pred)
+     - Reconstruye X_d[:, k+1+j] usando t_ref
+  6. Repite
+
+================================================================================
+MAPEOS NECESARIOS:
+================================================================================
+
+Existentes (usar directamente):
+  - spline_t(s) → t           [CubicSpline(arc_lengths, t_range)]
+  - spline_x(t) → x
+  - spline_y(t) → y
+  - spline_z(t) → z
+  - dp_ds                     [gradiente de posición wrt arco]
+
+Nuevos a crear:
+  - quaternion_at_time(t)     [interpolación de quatd]
+  - velocity_at_time(t)       [interpolación de velocidades]
+  - position_by_arc(s)        [composición: spline_t(s) → posición]
+  - quat_by_arc(s)            [composición: spline_t(s) → quaternión]
+  - velocity_by_arc(s)        [composición: spline_t(s) → velocidades]
+
+================================================================================
+RESTRICCIONES DE CONTROL:
+================================================================================
+
+u_s (velocidad de progreso):
+  - Mínimo: 0.01 m/s (evitar retroceso o parada total)
+  - Máximo: 3.0 m/s (razonable para drone)
+  - Suavidad: penalizar cambios bruscos en costo
+
+Empuje F:
+  - [0, F_max] como antes
+
+Torques τ:
+  - [-τ_max, τ_max] como antes
+
+================================================================================
+TÉRMINOS DE COSTO:
+================================================================================
+
+Costo de etapa k:
+  J_k = J_pose + J_control + J_arco
+  
+Donde:
+  J_pose = 10*(ln_error.T @ Q_l @ ln_error)
+  J_control = 0.5 * [F, τ].T @ U_mat @ [F, τ]
+  J_arco = -w_progress * u_s  (penalizar lentitud)
+
+w_progress: ganancia para recompensar progreso (ej: 0.5 a 1.0)
+
+================================================================================
+VALIDACIÓN:
+================================================================================
+
+Tests a realizar:
+  1. Verificar s es monotonicamente creciente
+  2. Verificar que X_d se reconstruye correctamente
+  3. Verificar que referencias son continuas en transiciones
+  4. Comparar controlabilidad: ¿puede el drone seguir la trayectoria?
+  5. Comparar eficiencia: ¿usa menos energía variando u_s?
+
+================================================================================
+NOTAS IMPORTANTES:
+================================================================================
+
+- No modificar dinámicas de rotación/traslación, solo agregar s
+- Mantener spline_t como CubicSpline (no pasar como parámetro, usar closure)
+- Reconstrucciones X_d deben ser DENTRO del loop (no pre-computadas)
+- Validar que spline_t no tenga singularidades en rango [0, s_max]
+- Si u_s -> 0, la trayectoria se detiene (comportamiento esperado)
+
+================================================================================

@@ -1,0 +1,276 @@
+================================================================================
+GUÍA DE PRUEBA: MPCC CON PARAMETRIZACIÓN DINÁMICA POR ARCO
+================================================================================
+
+OBJETIVO:
+Verificar que la implementación funciona correctamente y permite control
+flexible de velocidad de progreso sobre la trayectoria.
+
+================================================================================
+PASO 1: VERIFICACIÓN BÁSICA
+================================================================================
+
+1.1) Compilación sintáctica:
+  $ cd /home/uav/catkin_ws/src/dual_quaternion/scripts/MPC_LIE_FINAL
+  $ python3 -m py_compile ode_acados.py nmpc_acados.py MPC2.py
+  
+  Esperado: Sin errores
+
+1.2) Importación de módulos:
+  $ python3 -c "from ode_acados import quadrotorModel; print('✅ OK')"
+  $ python3 -c "from nmpc_acados import create_ocp_solver; print('✅ OK')"
+  
+  Esperado: Sin errores
+
+================================================================================
+PASO 2: DIMENSIONES DEL PROBLEMA
+================================================================================
+
+Crear script de verificación: test_dimensions.py
+
+```python
+#!/usr/bin/env python3
+import numpy as np
+from ode_acados import quadrotorModel
+
+# Test dimensions
+L = [1.0, 2.64e-3, 2.64e-3, 4.96e-3, 9.8]  # [m, Jxx, Jyy, Jzz, g]
+model, _, _, _, _, _, _, _, _, _ = quadrotorModel(L)
+
+print("Estado X dimensión:", model.x.size())
+print("Control u dimensión:", model.u.size())
+print("Parámetros p dimensión:", model.p.size())
+
+# Esperado:
+# Estado X dimensión: 15 (antes 14)  ← VERIFICAR
+# Control u dimensión: 5 (antes 4)   ← VERIFICAR
+# Parámetros p dimensión: 18 (sin cambios)
+```
+
+Ejecutar:
+  $ python3 test_dimensions.py
+  
+Esperado:
+  Estado X dimensión: 15
+  Control u dimensión: 5
+  Parámetros p dimensión: 18
+
+================================================================================
+PASO 3: EJECUCIÓN DE SIMULACIÓN COMPLETA
+================================================================================
+
+3.1) Lanzar nodo ROS:
+  $ roscore &
+  
+3.2) Ejecutar MPC2.py:
+  $ python3 MPC2.py 2>&1 | tee sim_output.log
+  
+3.3) Parámetros a monitorear:
+  - El programa debe conectar con ACADOS sin errores
+  - Debe generar los 10 gráficos (1_Quaternion_States.pdf, etc)
+  - Cada iteración debe imprimir el costo total
+  - Debe completar 30 segundos de simulación (~3000 iteraciones)
+  
+3.4) Verificaciones clave:
+  ✓ No hay excepciones por dimensiones
+  ✓ Control u_s está dentro de [0.01, 3.0]
+  ✓ s_current es monótonamente creciente
+  ✓ Se generan todos los gráficos
+
+================================================================================
+PASO 4: ANÁLISIS DE GRÁFICOS
+================================================================================
+
+Después de completar la simulación, buscar en los gráficos:
+
+4.1) 1_Quaternion_States.pdf
+  - Comparar con 2_Position_States.pdf
+  - Esperado: Ambos deben seguir referencias suavemente
+  
+4.2) 5_Control_Actions.pdf
+  - Verificar que F, τx, τy, τz estén dentro de límites
+  - Esperado: Sin saturación permanente
+
+4.3) 3_Angular_Velocities.pdf + 4_Linear_Velocities.pdf
+  - Verificar suavidad de velocidades
+  - Esperado: Sin cambios bruscos
+
+4.4) 6_Total_Cost.pdf + 7_Orientation_Cost.pdf + 8_Translation_Cost.pdf
+  - Verificar que costos disminuyen monótonamente
+  - Esperado: Tendencia decreciente
+
+================================================================================
+PASO 5: VERIFICACIÓN DE ARCO PARAMETRIZADO
+================================================================================
+
+Crear script: test_arc_progression.py
+
+```python
+#!/usr/bin/env python3
+import numpy as np
+import scipy.io as sio
+import matplotlib.pyplot as plt
+
+# Cargar resultados de simulación
+data = sio.loadmat('Dual_cost_identification.mat')
+X = data['X'][0]  # Estado
+u = data['u'][0]  # Control
+t = data['t'][0].flatten()
+
+# Reconstruir s_current basado en u_s
+s_current = np.zeros_like(t)
+dt = t[1] - t[0]  # Sample time
+
+for k in range(1, len(t)):
+    u_s_k = u[4, k-1]  # Arc rate control
+    s_current[k] = s_current[k-1] + u_s_k * dt
+
+# Plots
+fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+
+# Arc length vs time
+axes[0].plot(t, s_current, 'b-', linewidth=2)
+axes[0].set_ylabel('Arc length s [m]')
+axes[0].set_title('Progresión del arco en el tiempo')
+axes[0].grid(True)
+
+# Arc velocity vs time
+u_s_array = u[4, :]
+axes[1].plot(t[:-1], u_s_array, 'r-', linewidth=2)
+axes[1].axhline(y=0.01, color='g', linestyle='--', label='Min (0.01)')
+axes[1].axhline(y=3.0, color='orange', linestyle='--', label='Max (3.0)')
+axes[1].set_ylabel('Arc velocity u_s [m/s]')
+axes[1].set_xlabel('Time [s]')
+axes[1].set_title('Velocidad de progreso (u_s)')
+axes[1].legend()
+axes[1].grid(True)
+
+plt.tight_layout()
+plt.savefig('arc_progression_analysis.pdf')
+plt.show()
+
+print(f"Arc length final: {s_current[-1]:.2f} m")
+print(f"u_s min: {np.min(u_s_array):.4f} m/s")
+print(f"u_s max: {np.max(u_s_array):.4f} m/s")
+print(f"u_s mean: {np.mean(u_s_array):.4f} m/s")
+```
+
+Ejecutar:
+  $ python3 test_arc_progression.py
+
+Esperado:
+  - s_current debe ser monótonamente creciente
+  - u_s debe estar dentro de [0.01, 3.0]
+  - s_current debe llegar a ~20-30 m (longitud total de trayectoria)
+
+================================================================================
+PASO 6: VERIFICACIÓN DE CONSISTENCIA DE REFERENCIAS
+================================================================================
+
+Crear script: test_reference_consistency.py
+
+```python
+#!/usr/bin/env python3
+import numpy as np
+import scipy.io as sio
+
+# Cargar referencias pre-computadas vs dinámicas
+# Este test requiere modificar MPC2.py para guardar referencias
+
+data = sio.loadmat('Dual_cost_identification.mat')
+X_d = data['X_d'][0]  # Referencias
+
+# Verificar propiedades:
+# 1. Cuaterniones unitarios
+for k in range(X_d.shape[1]):
+    q = X_d[0:4, k]
+    norm_q = np.linalg.norm(q)
+    if abs(norm_q - 1.0) > 1e-6:
+        print(f"⚠️  Cuaternión NO unitario en k={k}: {norm_q}")
+
+print("✅ Todos los cuaterniones son unitarios")
+
+# 2. Posiciones suaves (sin saltos)
+pos = X_d[1:4, :]
+pos_diff = np.linalg.norm(np.diff(pos, axis=1), axis=0)
+max_jump = np.max(pos_diff)
+print(f"Máximo salto posicional: {max_jump:.4f} m/sample")
+print(f"  Esperado: < 0.1 m/sample ✅" if max_jump < 0.1 else f"  ⚠️  ALTO!")
+```
+
+================================================================================
+PASO 7: TROUBLESHOOTING
+================================================================================
+
+Problema: "AttributeError: u no tiene elemento [4]"
+  Causa: Estado/Control no tiene nueva dimensión
+  Solución: Verificar que ode_acados.py fue compilado correctamente
+
+Problema: "s_current no converge (se queda en 0)"
+  Causa: u_s_optimal siempre es muy pequeño
+  Solución: Revisar ganancia arc_control_cost en nmpc_acados.py
+
+Problema: "RuntimeError: Newton convergence failed"
+  Causa: Dinámica de arco introduce singularidad numérica
+  Solución: Agregar u_s_min = 0.01 (ya hecho) para evitar división por cero
+
+Problema: "Referencia se sale del rango de spline"
+  Causa: s_pred supera arc_lengths[-1]
+  Solución: np.clip(s_pred, 0, arc_lengths[-1]) (ya incluido)
+
+================================================================================
+PASO 8: OPTIMIZACIÓN DE GANANCIAS
+================================================================================
+
+Una vez verificada la funcionalidad básica, afinar:
+
+8.1) R_s (ganancia de arc length):
+  - Actual: 0.1
+  - Si u_s es muy pequeño → Reducir a 0.05
+  - Si u_s es muy variable → Aumentar a 0.5
+
+8.2) s_nominal_rate (predicción):
+  - Actual: 0.5 m/s
+  - Probar: 0.3, 0.7, 1.0 m/s
+  - Efecto: Ajusta agresividad de predicción
+
+8.3) u_s_min / u_s_max:
+  - Actual: [0.01, 3.0]
+  - Probar rangos según velocidad deseada
+
+================================================================================
+PASO 9: MÉTRICAS DE ÉXITO
+================================================================================
+
+✅ La implementación es EXITOSA si:
+
+  1. [ ] Compila sin errores de sintaxis
+  2. [ ] MPC resuelve sin errores numéricos
+  3. [ ] s_current crece monótonamente
+  4. [ ] u_s ∈ [0.01, 3.0] siempre
+  5. [ ] Gráficos se generan correctamente
+  6. [ ] Costos disminuyen en el tiempo
+  7. [ ] Cuaterniones siguen siendo unitarios
+  8. [ ] Posiciones son suaves (sin saltos)
+
+================================================================================
+PRÓXIMOS PASOS
+================================================================================
+
+Una vez validada esta implementación:
+
+1. Comparar con versión anterior (sin arco)
+   - ¿Mejora la eficiencia energética?
+   - ¿Mejor seguimiento de trayectoria?
+
+2. Análisis de varianza
+   - ¿Qué tan variable es u_s?
+   - ¿Cómo afecta a la estabilidad?
+
+3. Experiments con trayectorias difíciles
+   - Curvas muy cerradas
+   - Cambios abruptos de velocidad deseada
+
+4. Documentación de resultados para RAL/TCST
+
+================================================================================

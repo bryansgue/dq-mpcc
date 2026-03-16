@@ -1,0 +1,363 @@
+================================================================================
+GUÍA DE ANÁLISIS: INTERPRETACIÓN DE LOS GRÁFICOS GENERADOS
+================================================================================
+
+CONTEXTO: Se acaba de ejecutar exitosamente MPC2.py con la nueva arquitectura
+de 15 estados y 5 controles. Los 10 gráficos están disponibles.
+
+OBJETIVO: Este documento guía qué buscar en cada gráfico.
+
+================================================================================
+GRÁFICO 1: Quaternion States (1_Quaternion_States.pdf)
+================================================================================
+
+QUÉ VER:
+  • Cuatro componentes: q_w, q_x, q_y, q_z
+  • Referencia (línea punteada) vs actual (línea sólida)
+  • Valores deben mantenerse en [-1, 1]
+
+CRITERIOS DE ÉXITO:
+  ✓ Las cuatro componentes siguen sus referencias suavemente
+  ✓ No hay oscilaciones rápidas (sobreetiro < 10%)
+  ✓ La suma de cuadrados q_w² + q_x² + q_y² + q_z² ≈ 1
+
+SEÑALES DE PROBLEMA:
+  ✗ Componentes saltando entre 1 y -1 (ambigüedad quaternión)
+  ✗ Oscilaciones amortiguadas lentas (ganancia muy baja)
+  ✗ Desviaciones permanentes de referencia (error de tracking)
+  ✗ Error crece con el tiempo (inestabilidad)
+
+ACCIÓN RECOMENDADA:
+  → Si OK: Continuar análisis
+  → Si MALO: Revisar ganancias Q_l en nmpc_acados.py (línea ~112)
+
+================================================================================
+GRÁFICO 2: Position States (2_Position_States.pdf)
+================================================================================
+
+QUÉ VER:
+  • Tres componentes: x, y, z (coordenadas inerciales)
+  • Referencia (línea punteada) vs actual (línea sólida)
+  • Unidades: metros
+
+CRITERIOS DE ÉXITO:
+  ✓ Posición sigue referencia suavemente
+  ✓ No hay saltos (diferencia con iteración anterior < 0.1 m)
+  ✓ La trayectoria es continua y diferenciable
+
+RELACIÓN CON GRÁFICOS:
+  • Derivada de x,y,z ≈ velocidades en 4_Linear_Velocities.pdf
+  • Integral de velocidades ≈ posición
+
+SEÑALES DE PROBLEMA:
+  ✗ Saltos discretos en posición (error en integración)
+  ✗ Cambios bruscos (quiebres de suavidad)
+  ✗ Divergencia acumulativa (error de integración acumulado)
+
+ACCIÓN RECOMENDADA:
+  → Comparar segunda derivada con aceleraciones esperadas
+  → Si hay incompatibilidad, revisar dinámicas en ode_acados.py
+
+================================================================================
+GRÁFICO 3: Angular Velocities (3_Angular_Velocities.pdf)
+================================================================================
+
+QUÉ VER:
+  • Tres componentes: ω_x, ω_y, ω_z (en cuerpo, rad/s)
+  • Referencia (línea punteada) vs actual (línea sólida)
+  • Valores típicos: [-π, π] rad/s
+
+CRITERIOS DE ÉXITO:
+  ✓ Velocidades angulares siguen referencia (generalmente cero)
+  ✓ Sin oscilaciones rápidas
+  ✓ Magnitud razonable (<1 rad/s para movimientos suaves)
+
+INTERPRETACIÓN:
+  • Derivada de quaternion ∝ velocidad angular
+  • Integral de ω_x,ω_y,ω_z reconstruye cambios de orientación
+
+SEÑALES DE PROBLEMA:
+  ✗ Velocidades angulares muy grandes (> 2 rad/s sustentado)
+  ✗ Oscilaciones no amortiguadas (inestabilidad rotacional)
+  ✗ No convergen a referencia
+
+ACCIÓN RECOMENDADA:
+  → Reducir ganancias de torque si hay sobreetiro
+  → Aumentar si la respuesta es muy lenta
+
+================================================================================
+GRÁFICO 4: Linear Velocities (4_Linear_Velocities.pdf)
+================================================================================
+
+QUÉ VER:
+  • Tres componentes: v_x, v_y, v_z (en inercial, m/s)
+  • Referencia (línea punteada) vs actual (línea sólida)
+  • Valores típicos: [-5, 5] m/s para drones cuadricóptero
+
+CRITERIOS DE ÉXITO:
+  ✓ Velocidades suaves (sin cambios abruptos)
+  ✓ Sigue referencias (aunque pueden ser cambiantes)
+  ✓ Correlación clara con posición en Gráfico 2
+
+INTERPRETACIÓN:
+  • Primera derivada de posición (Gráfico 2)
+  • Magnitud ||v|| = sqrt(v_x² + v_y² + v_z²) es velocidad total
+  • Para vuelo horizontal: v_z ≈ 0, v_x,v_y cambian lentamente
+
+SEÑALES DE PROBLEMA:
+  ✗ Cambios abruptos en velocidad (aceleración discontinua)
+  ✗ Velocidades muy altas (<1 m/s no es realista para drones)
+  ✗ Componente z no controlada (cae o sube descontrolado)
+
+ACCIÓN RECOMENDADA:
+  → Verificar límites de fuerza F_min, F_max en MPC2.py línea ~350
+  → Revisar valor de g (gravedad) en L = [..., ..., ..., ..., g]
+
+================================================================================
+GRÁFICO 5: Control Actions (5_Control_Actions.pdf) ⭐ CRÍTICO
+================================================================================
+
+QUÉ VER:
+  • CINCO componentes AHORA (antes eran 4):
+    ├─ F (fuerza propulsora) [N]
+    ├─ τ_1 (torque roll) [N·m]
+    ├─ τ_2 (torque pitch) [N·m]
+    ├─ τ_3 (torque yaw) [N·m]
+    └─ u_s (velocidad de arco) [m/s] ← NUEVO ⭐
+
+CRITERIOS DE ÉXITO para u_s:
+  ✓ Monotónicamente creciente (s nunca decrece)
+  ✓ Dentro de límites: 0.01 ≤ u_s ≤ 3.0 m/s
+  ✓ Suave y sin oscilaciones
+  ✓ Promedio ~0.5 m/s (valor nominal)
+
+CRITERIOS DE ÉXITO para F, τ_i:
+  ✓ F dentro de [F_min, F_max]
+  ✓ τ_i dentro de [-τ_max, τ_max]
+  ✓ Sin saturación permanente
+  ✓ Respuesta suave
+
+INTERPRETACIÓN DE u_s:
+  • u_s = ds/dt: velocidad de progreso en la trayectoria
+  • u_s = 0.5 m/s: velocidad nominal de trayectoria
+  • u_s > 0.5: MPC acelera a través de la trayectoria
+  • u_s < 0.5: MPC desacelera
+
+SEÑALES DE PROBLEMA:
+  ✗ u_s saturado (siempre 3.0 o siempre 0.01) → R_s demasiado pequeño
+  ✗ u_s muy variable/ruidoso → R_s demasiado pequeño
+  ✗ u_s decreciente → Bug en integración (s no debería retroceder)
+  ✗ F oscilando → Ganancia de translación demasiado alta
+  ✗ τ's saturados → Sistema subreactuado para referencia
+
+ACCIÓN RECOMENDADA SI PROBLEMA:
+  → Si u_s saturado: Aumentar R_s (en nmpc_acados.py)
+  → Si u_s ruidoso: Disminuir R_s
+  → Si valores razonables: Perfecto, pasar a siguiente análisis
+
+================================================================================
+GRÁFICO 6: Total Cost (6_Total_Cost.pdf)
+================================================================================
+
+QUÉ VER:
+  • Una línea mostrando J_total(t)
+  • Debe ser monótonamente decreciente (generalmente)
+  • Valor inicial vs final
+
+CRITERIOS DE ÉXITO:
+  ✓ Costo disminuye con el tiempo (señal de convergencia)
+  ✓ No hay picos bruscos (indican cambios de referencia)
+  ✓ Pendiente negativa suave (no oscilante)
+
+INTERPRETACIÓN:
+  • Pendiente muy negativa: Ajuste rápido inicial
+  • Pendiente cercana a cero: Sistema ya optimizado
+  • Platateau: Sistema en régimen estacionario
+
+COMPARACIÓN CON BASELINE:
+  → Este es el costo con la nueva parametrización de arco
+  → Comparar con gráfico anterior (sin u_s) después
+  → ¿Más alto, más bajo, similar?
+
+SEÑALES DE PROBLEMA:
+  ✗ Costo aumentando (inestabilidad)
+  ✗ Oscilaciones grandes (tuning mal)
+  ✗ Costo muy alto (referencias lejanas o ganancias bajas)
+
+ACCIÓN RECOMENDADA:
+  → Si es aceptable: Continuar
+  → Si es alto: Revisar referencias o ganancias
+
+================================================================================
+GRÁFICO 7: Orientation Cost (7_Orientation_Cost.pdf)
+================================================================================
+
+QUÉ VER:
+  • Componente de costo solo de orientación
+  • Debe ser monotónamente decreciente o casi plano
+
+CRITERIOS DE ÉXITO:
+  ✓ Rápida convergencia inicial
+  ✓ Se estabiliza a cero o pequeño valor
+  ✓ Suave sin oscilaciones
+
+RELACIÓN CON OTROS:
+  • Parte del Gráfico 6_Total_Cost
+  • Causado por error en quaternión
+
+ACCIÓN RECOMENDADA:
+  → Si decrece: Bien
+  → Si oscila: Problema en control de orientación
+  → Si alto: Revisar ganancia Q_l en nmpc_acados.py
+
+================================================================================
+GRÁFICO 8: Translation Cost (8_Translation_Cost.pdf)
+================================================================================
+
+QUÉ VER:
+  • Componente de costo solo de posición
+  • Debe ser monótonamente decreciente
+
+CRITERIOS DE ÉXITO:
+  ✓ Disminuye con tiempo (convergencia posicional)
+  ✓ Suave sin oscilaciones grandes
+  ✓ Correlaciona con error en Gráfico 2_Position_States
+
+COMPARACIÓN CON ORIENTATION COST:
+  • Si ambos decrecen: Control balanceado
+  • Si solo uno decrece: Posible desbalance de ganancias
+
+ACCIÓN RECOMENDADA:
+  → Si ambos 7 y 8 bajan conjuntamente: Bien
+  → Si uno está alto: Aumentar ganancia correspondiente
+
+================================================================================
+GRÁFICO 9: Control Cost (9_Control_Cost.pdf)
+================================================================================
+
+QUÉ VER:
+  • Penalización por esfuerzo de control
+  • Parte de Gráfico 6_Total_Cost
+
+CRITERIOS DE ÉXITO:
+  ✓ Decrece inicialmente (gasto de energía inicial)
+  ✓ Se estabiliza a pequeño valor (control suave)
+  ✓ No es el dominante en costo total
+
+INTERPRETACIÓN:
+  • Alto control cost: Control muy agresivo
+  • Bajo control cost: Control suave
+  • Incluye: R*(F²) + R_s*(u_s²)
+
+BALANCE DESEADO (en Gráfico 6):
+  • Control Cost ~ 10-20% del Total
+  • Orientation Cost ~ 40-50% del Total
+  • Translation Cost ~ 40-50% del Total
+
+ACCIÓN RECOMENDADA:
+  → Si Control Cost es muy alto: Aumentar R (penalidad)
+  → Si muy bajo: Posible subactuación (dame más libertad)
+
+================================================================================
+GRÁFICO 10: Computational Time (10_Computational_Time.pdf)
+================================================================================
+
+QUÉ VER:
+  • Tiempo en ms que toma cada iteración MPC
+  • Línea puede ser ruidosa (variaciones CPU)
+  • Media vs máximo
+
+CRITERIOS DE ÉXITO:
+  ✓ Tiempo medio < 5 ms (para hardware real a 100 Hz)
+  ✓ Máximo < 10 ms (debe completar antes de siguiente paso)
+  ✓ Consistente (no mucha varianza)
+
+EN SIMULACIÓN:
+  • Este tiempo es en computadora sin restricciones
+  • Tiempo real puede ser 2-3x en hardware embarcado
+  • Sirve para benchmark: ¿es viable?
+
+SEÑALES DE PROBLEMA:
+  ✗ Tiempo > 10 ms (no completa a tiempo)
+  ✗ Varianza muy alta (sistema inestable CPU)
+  ✗ Tiempo aumenta con iteración (memory leak?)
+
+ACCIÓN RECOMENDADA:
+  → Si < 5 ms promedio: Excelente para implementación
+  → Si 5-10 ms: Aceptable, monitorear
+  → Si > 10 ms: Revisar N_prediction o simplificar costo
+
+================================================================================
+FLUJO DE VERIFICACIÓN RECOMENDADO
+================================================================================
+
+PASO 1 - VERIFICACIÓN BÁSICA:
+  □ Abrir Gráfico 5_Control_Actions.pdf
+  □ ¿u_s está dentro de [0.01, 3.0]?
+  □ ¿u_s es monótonamente creciente?
+    → NO: Bug en arc integration, revisar MPC2.py línea ~580
+    → SÍ: Continuar
+
+PASO 2 - VERIFICACIÓN DE ESTADOS:
+  □ Abrir Gráfico 1_Quaternion_States.pdf
+  □ ¿Sigue referencia suavemente?
+  □ Abrir Gráfico 2_Position_States.pdf
+  □ ¿Sigue referencia sin saltos?
+    → NO en cualquiera: Revisar ganancias
+    → SÍ en ambas: Continuar
+
+PASO 3 - VERIFICACIÓN DE COSTOS:
+  □ Abrir Gráfico 6_Total_Cost.pdf
+  □ ¿Decrece monótonamente?
+  □ Abrir Gráfico 10_Computational_Time.pdf
+  □ ¿Tiempo promedio < 5 ms?
+    → NO: Revisar sintonización
+    → SÍ: Sistema listo
+
+PASO 4 - ANÁLISIS DETALLADO:
+  □ Gráfico 7,8,9: ¿Balance de costos?
+  □ Gráfico 3,4: ¿Velocidades razonables?
+  □ Gráfico 5: ¿F y τ's dentro de límites?
+
+PASO 5 - CONCLUSIÓN:
+  ✓ Si todos OK: Pasar a optimización de parámetros
+  ✗ Si algo mal: Identificar qué componente y ajustar
+
+================================================================================
+CHECKLIST DE ACEPTACIÓN
+================================================================================
+
+ANTES DE CONTINUAR CON OPTIMIZACIÓN, VERIFICAR:
+
+[ ] u_s ∈ [0.01, 3.0] m/s todo el tiempo
+[ ] u_s es monótonamente creciente (s nunca decrece)
+[ ] Quaternion sigue referencia
+[ ] Posición sigue referencia
+[ ] Total cost decrece monotónicamente
+[ ] Tiempo computacional < 5 ms promedio
+[ ] F, τ dentro de límites
+[ ] No hay saturaciones permanentes
+[ ] Gráficos suaves (sin ruido excesivo)
+
+¿Cuántos ✓?: 
+  9/9 → ¡¡EXCELENTE!! Pasar a optimización
+  7-8 → Bien, revisar los 1-2 que fallaron
+  5-6 → Revisar más; posible tuning necesario
+  <5  → Problema fundamental; revisar dinámicas
+
+================================================================================
+PRÓXIMO PASO
+================================================================================
+
+Una vez revisados los gráficos:
+
+1. Reportar: ¿Cuántos criterios se cumplen?
+2. Describir: ¿Qué comportamiento se observa en u_s?
+3. Proponer: ¿Qué ajustes son necesarios?
+
+Documentos de referencia:
+  - ode_acados.py (líneas 900-960): Dinámicas
+  - nmpc_acados.py (líneas 46-190): OCP y ganancias
+  - MPC2.py (líneas 500-590): Loop MPC y arc integration
+
+================================================================================

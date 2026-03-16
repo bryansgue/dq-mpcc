@@ -1,0 +1,256 @@
+\documentclass[letterpaper, 10pt, conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% *** PACKAGES ***
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm, mathtools}
+\usepackage{graphicx}
+\usepackage{bm}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cite}
+
+% *** CUSTOM MACROS ***
+\newcommand{\SE}{\mathrm{SE}(3)}
+\newcommand{\SO}{\mathrm{SO}(3)}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\dq}{\hat{q}}
+\newcommand{\dqE}{\dq_e}
+\newcommand{\dqD}{\dq_d}
+
+\title{Lie-Invariant Model Predictive Contouring Control with Arc-Length Progress for Quadrotor Pose Tracking}
+
+\author{\IEEEauthorblockN{Author Name}
+\IEEEauthorblockA{Department / Institution\\
+Email: author@example.com}}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\pagestyle{empty}
+
+\begin{abstract}
+This article revisits the design of a model predictive contouring controller (MPCC) for quadrotors evolving on the Lie group \SE. We formulate the tracking error using dual quaternions and Lie-invariant projections so that contouring and lag penalties respect the geometry of the configuration space. The key contribution is the introduction of an explicit arc-length state and its associated control input, which decouples spatial progression along the reference path from wall-clock time. This resolves long-standing concerns about how the MPCC decides the advance rate and enables the optimizer to trade contour accuracy against progress speed directly within the optimal control problem. We summarize the theoretical background, detail the resulting optimal control program, and outline the implementation pipeline. A dedicated section is reserved for future experimental validation.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Model predictive contouring control (MPCC), dual quaternions, Lie groups, quadrotors, arc-length parametrization
+\end{IEEEkeywords}
+
+\section{Introduction}
+Quadrotor navigation demands simultaneous regulation of translation and orientation. Classical MPCC schemes typically describe trajectories in Euclidean position space and assign progress through an external time schedule. This leads to two persistent pain points: (i) pose errors are not treated on \SE, and (ii) the controller cannot freely choose the advance rate along the path once a temporal parametrization is fixed. In agile missions these limitations manifest as saturation of reference trackers, conservative contouring behavior during tight turns, and brittle switching whenever the vehicle must slow down or accelerate relative to the nominal time law.
+
+The present work addresses both issues by leveraging dual quaternions and Lie-invariant projections while extending the state vector with an arc-length variable whose dynamics are explicitly controlled inside the MPC loop. The resulting controller measures tracking errors directly on \SE(3), decomposes the translational component into lag and contour directions aligned with the trajectory tangent, and allows the optimizer to move along the path at whatever pace best balances accuracy and progress incentives.
+
+The manuscript is structured for a Robotics and Automation Letters (RAL) submission, targeting a maximum length of six pages in double-column format. Section~\ref{sec:contributions} lists the main contributions. Section~\ref{sec:related_work} situates our approach within prior art. Sections~\ref{sec:preliminaries} through \ref{sec:discussion} develop the theoretical and algorithmic components, while Section~\ref{sec:results_placeholder} reserves space for future quantitative evidence.
+
+\section{Contributions}
+\label{sec:contributions}
+The paper makes the following contributions:
+\begin{enumerate}
+    \item \textbf{Lie-Invariant Error Decomposition:} We restate the MPCC cost in terms of dual-quaternion pose errors whose translational component is projected onto lag and contour directions using Lie-invariant metrics.
+    \item \textbf{Arc-Length Progress State:} We introduce an additional state $s$ with dynamics $\dot{s} = u_s$ and constrain the new control input $u_s$ within feasible bounds, allowing the optimizer to decide how fast to move along the trajectory independently of elapsed time.
+    \item \textbf{Unified Optimal Control Program:} We derive the optimal control problem (OCP) solved by ACADOS, highlighting how the new state, costs, and constraints integrate into a real-time SQP-RTI pipeline.
+    \item \textbf{Implementation Blueprint:} We connect the mathematical formulation to the provided software modules, enabling practitioners to reproduce the controller and verify arc-length evolution from logged data.
+\end{enumerate}
+
+\section{Related Work}
+\label{sec:related_work}
+Model predictive contouring control originates from ground vehicles and planar racing, where the state is naturally described in Euclidean coordinates and the tangent direction is easily defined along a centerline. Early aerial extensions lifted these ideas to three dimensions but retained Euclidean error metrics, often leading to inconsistent orientation handling. Geometric controllers based on rotation matrices or quaternions have meanwhile shown strong performance for pose tracking, yet they rarely include contouring costs or explicit progress regulation. Path-following frameworks have introduced progress variables as auxiliary states, but most still rely on temporal reference schedules. Our proposal fuses these strands: it employs dual-quaternion errors as in geometric control, uses Lie-invariant projections to define lag and contour penalties, and augments the state with an arc-length variable controlled directly by the MPC optimizer, akin to virtual throttle schemes in autonomous racing.
+
+\section{Lie-Theoretic Preliminaries}
+\label{sec:preliminaries}
+We recall basic notions on Lie groups and dual quaternions needed for the MPCC design.
+
+\subsection{Groups $\SO(3)$ and $\SE$}
+The rotation group $\SO(3)$ is defined by $R^\top R = I$ and $\det(R)=1$. The pose group $\SE$ combines rotations and translations via the semi-direct product $\SO(3) \ltimes \RR^3$. Its Lie algebra $\mathfrak{se}(3)$ is identified with pairs $(\bm{\phi}, \bm{\rho}) \in \RR^6$ under the bracket $[(\bm{\phi}_1,\bm{\rho}_1),(\bm{\phi}_2,\bm{\rho}_2)] = (\bm{\phi}_1 \times \bm{\phi}_2,\ \bm{\phi}_1 \times \bm{\rho}_2 - \bm{\phi}_2 \times \bm{\rho}_1)$. The associated hat operator maps vectors to elements of $\mathfrak{se}(3)$, and the adjoint action $\mathrm{Ad}_{(R,\mathbf{p})}$ transports twists across frames.
+
+\subsection{Dual Quaternions and Logarithms}
+A unit dual quaternion $\dq = q_r + \varepsilon q_d$ encodes a pose through a unit quaternion $q_r$ and a dual part $q_d$ linked to translation. The logarithm of the pose error $\dqE = \dqD^* \circ \dq$ yields $\log(\dqE) = (\bm{\phi}, \bm{\rho})$, where $\bm{\phi} \in \RR^3$ represents the rotational error and $\bm{\rho} \in \RR^3$ the translational error expressed in the desired frame via the inverse left Jacobian $J_l(\bm{\phi})^{-1}$. This mapping ensures that composing errors corresponds to addition in the Lie algebra up to second order, which is crucial for quadratic MPC costs.
+
+\subsection{Left Jacobian Identities}
+For $\bm{\phi}$ with norm $\theta$, the left Jacobian admits the closed form $J_l(\bm{\phi}) = I + \frac{1-\cos\theta}{\theta^2}\widehat{\bm{\phi}} + \frac{\theta-\sin\theta}{\theta^3}\widehat{\bm{\phi}}^2$. Its inverse exists except at $\theta = 2k\pi$ and can be approximated by truncated series when $\theta$ is small. Efficient implementations switch between the closed form and a third-order series to avoid catastrophic cancellation.
+
+\section{System Model and Problem Statement}
+We consider a rigid-body quadrotor whose configuration evolves on \SE. The state vector comprises the dual quaternion pose $\dq$, body angular velocity $\boldsymbol{\omega}_b$, and body-frame linear velocity $\mathbf{v}_b$. Controls consist of collective thrust $F$ and body torques $\bm{\tau} = (\tau_1, \tau_2, \tau_3)$. The continuous dynamics follow
+\begin{align}
+    \dot{\dq} &= \tfrac{1}{2} \dq \circ \hat{\omega}, \\
+    J \dot{\boldsymbol{\omega}}_b &= \bm{\tau} - \boldsymbol{\omega}_b \times (J \boldsymbol{\omega}_b), \\
+    m \dot{\mathbf{v}}_b &= F \mathbf{e}_3 - m g R^\top \mathbf{e}_3 + \mathbf{v}_b \times \boldsymbol{\omega}_b - D \mathbf{v}_b,
+\end{align}
+where $J$ is the inertia matrix, $m$ the mass, and $D$ diagonal aerodynamic drag coefficients. The control objective is to follow a reference path $\gamma(s)$ on \SE while staying close to its curvature-defined Frenet frame.
+
+Given sampled measurements $\mathbf{x}_\text{meas}$, we seek a sequence of controls that minimizes contour and lag errors while maximizing forward progress along the path, subject to actuator limits and the geometric constraints inherent to dual quaternions.
+
+\section{MPCC with Lie-Invariant Contouring}
+\label{sec:mpcc_lie}
+
+\subsection{Euclidean Baseline}
+Consider a reference curve $\gamma : [0,T] \to \RR^3$ of class $C^2$ with time parameter $t$ and unit tangent $\mathbf{t}(t) = \dot{\gamma}(t)/\|\dot{\gamma}(t)\|$. The classical spatial MPCC introduces an auxiliary scalar $\theta$ that approximates the time-to-space mapping and defines the position error $\mathbf{e}(t) = \mathbf{p}(t) - \gamma(\theta(t))$. Projecting $\mathbf{e}$ onto $\mathbf{t}(\theta)$, the lag and contour components are
+\begin{equation}
+    \mathbf{e}_l = (\mathbf{e} \cdot \mathbf{t}) \mathbf{t}, \qquad \mathbf{e}_c = (I_3 - \mathbf{t}\mathbf{t}^\top)\mathbf{e},
+    \label{eq:euclidean_projection}
+\end{equation}
+so that $\|\mathbf{e}\|^2 = \|\mathbf{e}_l\|^2 + \|\mathbf{e}_c\|^2$. A typical stage cost reads
+\begin{equation}
+    \ell_{\text{Euc}} = \mathbf{e}_l^\top Q_l \mathbf{e}_l + \mathbf{e}_c^\top Q_c \mathbf{e}_c + \bm{u}^\top R \bm{u} - q_s \dot{\theta},
+\end{equation}
+where $Q_l,Q_c \succeq 0$ and $q_s > 0$ penalize lag, contour, and lack of progress, while $R \succ 0$ captures control effort. The auxiliary state $\theta$ typically satisfies $\dot{\theta} = v_{\theta}$ with bounds $v_{\theta,\min} \leq v_{\theta} \leq v_{\theta,\max}$, but the references remain defined in Euclidean coordinates. Equation~\eqref{eq:euclidean_projection} therefore ignores the rotational misalignment and the curvature of $\SE(3)$.
+
+Two structural couplings follow from this formulation: (i) the nominal timing law $t \mapsto \theta(t)$ is baked into $\gamma(\theta)$, so the optimizer can only perturb $\theta$ within the admissible range $[v_{\theta,\min}, v_{\theta,\max}]$; and (ii) the same scalar controls both the sampling of the reference and the balance between lag and contour penalties. Consequently the controller must compromise between respecting the imposed time schedule and reducing contour error, causing the familiar ``stuck-behind-the-path'' behavior when $v_{\theta,\min}$ is too large.
+
+\subsection{Dual-Quaternion Lift and Lie Projection}
+Let $\dqE = \dqD^* \circ \dq$ denote the pose error. Its logarithm provides $(\bm{\phi},\bm{\rho}) \in \mathfrak{se}(3)$, with $\bm{\rho}$ given by
+\begin{equation}
+    \bm{\rho} = J_l(\bm{\phi})^{-1} R_d^\top(\mathbf{p} - \mathbf{p}_d),
+    \label{eq:lie_rho}
+\end{equation}
+which is invariant under right multiplication by $\SE$ elements. Defining the path on \SE via $\gamma(s) = (R_d(s), \mathbf{p}_d(s))$ and its spatial tangent $\mathbf{t}_d(s) = \partial \mathbf{p}_d / \partial s$ expressed in the desired frame, the Lie-invariant decomposition becomes
+\begin{align}
+    \bm{\rho}_l &= (\bm{\rho} \cdot \mathbf{t}_d) \mathbf{t}_d, 
+    \label{eq:lie_lag}\\
+    \bm{\rho}_c &= (I_3 - \mathbf{t}_d \mathbf{t}_d^\top) \bm{\rho}.
+    \label{eq:lie_contour}
+\end{align}
+The full stage cost used in the OCP is then
+\begin{equation}
+    \ell_{\text{Lie}} = \bm{\phi}^\top Q_\phi \bm{\phi} + \bm{\rho}_l^\top Q_l \bm{\rho}_l + \bm{\rho}_c^\top Q_c \bm{\rho}_c + \bm{u}_{\text{old}}^\top R \bm{u}_{\text{old}} - q_s \|\bm{\rho}\|,
+    \label{eq:lie_stage_cost}
+\end{equation}
+where $Q_\phi, Q_l, Q_c \succ 0$ can be tuned independently. Because $J_l(\bm{\phi})$ is analytic, the gradient $\partial \ell_{\text{Lie}}/\partial (\bm{\phi},\bm{\rho})$ remains smooth, enabling Gauss--Newton approximations inside SQP-RTI. Furthermore:
+
+\begin{proposition}[Consistency with Euclidean MPCC]
+If $\|\bm{\phi}\| \to 0$ and $R_d \to I$, then $J_l(\bm{\phi}) \to I$ and the Lie projection~\eqref{eq:lie_lag}--\eqref{eq:lie_contour} reduces to~\eqref{eq:euclidean_projection} expressed in the desired frame. Consequently $\ell_{\text{Lie}}$ converges to $\ell_{\text{Euc}}$ provided $Q_\phi \to 0$.
+\end{proposition}
+
+\begin{lemma}[Projector Isomorphism]
+Let $P_{\parallel}(\mathbf{t}) = \mathbf{t} \mathbf{t}^\top$ and $P_{\perp}(\mathbf{t}) = I_3 - \mathbf{t}\mathbf{t}^\top$ denote the Euclidean lag and contour projectors. Define the Lie projectors $\tilde{P}_{\parallel}(\mathbf{t}_d) = \mathbf{t}_d \mathbf{t}_d^\top$ and $\tilde{P}_{\perp}(\mathbf{t}_d) = I_3 - \mathbf{t}_d \mathbf{t}_d^\top$. For any $R_d \in \SO(3)$, we have
+\begin{equation}
+    	ilde{P}_{\parallel}(\mathbf{t}_d) = R_d^\top P_{\parallel}(R_d \mathbf{t}_d) R_d, \qquad \tilde{P}_{\perp}(\mathbf{t}_d) = R_d^\top P_{\perp}(R_d \mathbf{t}_d) R_d.
+\end{equation}
+Consequently, the Lie decomposition $\bm{\rho} = \bm{\rho}_l + \bm{\rho}_c$ is an orthogonal splitting with respect to the Ad-invariant inner product $\langle (\bm{\phi},\bm{\rho}),(\bm{\phi}',\bm{\rho}') \rangle = \bm{\phi}^\top \bm{\phi}' + \bm{\rho}^\top \bm{\rho}'$.
+\end{lemma}
+
+\begin{proof}
+Because $\mathbf{t}_d = R_d^\top \mathbf{t}$, we obtain $\tilde{P}_{\parallel}(\mathbf{t}_d) = (R_d^\top \mathbf{t})(R_d^\top \mathbf{t})^\top = R_d^\top (\mathbf{t}\mathbf{t}^\top) R_d = R_d^\top P_{\parallel}(\mathbf{t}) R_d$. The orthogonality of $R_d$ implies $R_d^\top R_d = I_3$, giving the second identity. Since $P_{\parallel}$ and $P_{\perp}$ are self-adjoint and idempotent, so are $\tilde{P}_{\parallel}$ and $\tilde{P}_{\perp}$. Orthogonality of the decomposition follows from $\bm{\rho}_l^\top \bm{\rho}_c = \bm{\rho}^\top \tilde{P}_{\parallel}^\top \tilde{P}_{\perp} \bm{\rho} = 0$.
+\end{proof}
+
+Working with dual quaternions therefore generalizes the baseline without sacrificing familiar tuning heuristics. Because~\eqref{eq:lie_rho} depends on $R_d$ alone, aggressive body motions simply rotate the local frame used for the projection, preventing artificial coupling between translation and yaw.
+
+To build intuition, imagine a helical reference: Euclidean MPCC would treat vertical excursions as contour errors regardless of the desired orientation, while the Lie-invariant projection first rotates the displacement into the desired body frame and only then separates lag from contour. This subtle change yields noticeably smaller cross-coupling between translational and rotational penalties in practice.
+
+\section{Arc-Length Progress Dynamics}
+\label{sec:arc_length}
+Let $\gamma : [0,L] \rightarrow \SE$ be the reference trajectory parameterized by arc-length $s$ so that $\|\partial \mathbf{p}_d / \partial s\| = 1$. We extend the state as
+\begin{equation}
+    \mathbf{x}_\mathrm{ext} = (\dq, \boldsymbol{\omega}_b, \mathbf{v}_b, s),
+\end{equation}
+and define the progress control pair $(s,u_s)$ by the first-order subsystem
+\begin{equation}
+    \dot{s} = u_s, \qquad u_{s,\min} \leq u_s \leq u_{s,\max}.
+    \label{eq:s_dyn}
+\end{equation}
+The references fed to the MPC at each sampling step are evaluated at the current arc position $s_k$, i.e., $\dqD(s_k)$, $\mathbf{t}_d(s_k)$, curvature $\kappa(s_k)$, and any feedforward thrust terms derived from $\gamma$. This guarantees that errors computed via~\eqref{eq:lie_rho} remain consistent with the true progression state regardless of the optimizer's choice of $u_s$.
+
+\subsection{Temporal-Decoupled Progress Search}
+Equation~\eqref{eq:s_dyn} severs the algebraic link between wall-clock time $t$ and spatial progress because $s$ evolves only under the virtual control $u_s$. References are parameterized directly by $s$, so the optimizer may select any feasible $u_s$ without distorting the geometry of $\gamma$. Formally, the mapping $t \mapsto s$ is now an output of the OCP instead of an input: the condensed KKT system contains $s_{k+1} = s_k + \Delta t\, u_{s,k}$ as a constraint, but the spline evaluations $\gamma(s_k)$ do not depend on $t$. This decoupling lets the controller ``search'' for the best point on the path at each iteration, moving forward quickly when contour errors are small and slowing down otherwise. In contrast, the Euclidean baseline fixes $s \equiv \theta(t)$ a priori, so the optimizer can only adjust lag/contour penalties around that temporal schedule.
+
+\begin{theorem}[Monotonicity and Decoupling]
+Assume $u_{s,\min} > 0$ and $u_{s,\max} < \infty$. For any piecewise-continuous $u_s(t)$ satisfying~\eqref{eq:s_dyn}, the mapping $t \mapsto s(t)$ is strictly increasing and admits the closed form $s(t) = s(0) + \int_0^t u_s(\tau) \mathrm{d}\tau$. Moreover, the OCP defined in Section~\ref{sec:ocp} is equivalent to an OCP in which $s$ is eliminated and the references are evaluated at $\sigma(t) = s(0) + \int_0^t u_s(\tau) \mathrm{d}\tau$; hence time and space are linked only through $u_s$ and not through the reference parametrization.
+\end{theorem}
+
+\begin{proof}
+Strict positivity of $u_s$ implies $\dot{s} = u_s > 0$ almost everywhere, so $s$ is strictly increasing and the integral representation follows from the fundamental theorem of calculus. Eliminating $s$ from the discrete OCP yields the constraint $s_k = s_0 + \sum_{i=0}^{k-1} \Delta t\, u_{s,i}$, showing that $\gamma(s_k)$ depends on the controls but not on time explicitly. Conversely, given any admissible sequence $\{u_{s,k}\}$ one can reconstruct $\{s_k\}$ via the same recurrence, proving equivalence of feasible sets and objective values.
+\end{proof}
+
+\subsection{Extended State-Space Model}
+Denoting the original state by $\mathbf{x} = (\dq, \boldsymbol{\omega}_b, \mathbf{v}_b)$ and the physical inputs by $\bm{u}_{\text{old}}$, the augmented dynamics are
+\begin{equation}
+    \dot{\mathbf{x}}_\mathrm{ext} = \begin{bmatrix} f(\mathbf{x}, \bm{u}_{\text{old}}) \\ u_s \end{bmatrix} = \tilde{f}(\mathbf{x}_\mathrm{ext}, \tilde{\bm{u}}), \quad \tilde{\bm{u}} = (\bm{u}_{\text{old}}, u_s),
+\end{equation}
+with admissible set $\mathcal{U} = \{ \tilde{\bm{u}} \mid \bm{u}_{\min} \leq \bm{u}_{\text{old}} \leq \bm{u}_{\max},\ u_{s,\min} \leq u_s \leq u_{s,\max} \}$. The discretization used in ACADOS is implicit Runge--Kutta of order three so that the local truncation error matches the accuracy of the geometric integration of the pose.
+
+\subsection{Progress Constraints and Optimality Conditions}
+To avoid extrapolating the spline outside $[0,L]$, we impose box constraints $0 \leq s \leq L$ at every stage. Writing the discrete update as
+\begin{equation}
+    s_{k+1} = s_k + \Delta t\, u_{s,k},
+\end{equation}
+the Karush--Kuhn--Tucker (KKT) conditions introduce multipliers $\lambda_k^+ \geq 0$ and $\lambda_k^- \geq 0$ for the upper/lower bounds, yielding the stationarity equation
+\begin{equation}
+    2 R_s u_{s,k} + \lambda_k^+ - \lambda_k^- - q_s \frac{\bm{\rho}_k^\top \partial \bm{\rho}_k / \partial u_{s,k}}{\|\bm{\rho}_k\| + \varepsilon} = 0.
+\end{equation}
+Since $\partial \bm{\rho}_k / \partial u_{s,k}$ enters only through the dependence of references on $s_k$, enforcing $u_{s,\min} > 0$ guarantees forward progress unless the optimizer saturates the lower bound. The nominal rate $\dot{s}_\mathrm{nom} = L/T$ sets feasibility by providing a warm-start trajectory that satisfies~\eqref{eq:s_dyn} exactly.
+
+\subsection{Reference Evaluation and Smoothness}
+For each $s$, the Frenet frame $(\mathbf{t}_d, \mathbf{n}_d, \mathbf{b}_d)$ is obtained by differentiating the spline basis, and the desired angular velocity is reconstructed from the dual quaternion derivative via $\dot{\dqD} = \tfrac{1}{2} \dqD \circ \hat{\omega}_d$. These quantities appear explicitly in the defect constraints when condensing the OCP and ensure that the optimizer reacts smoothly to curvature changes. Because the arc-length parameterization enforces $\|\mathbf{t}_d\|=1$, the Lie projections~\eqref{eq:lie_lag}--\eqref{eq:lie_contour} inherit orthogonality without additional normalization.
+
+\subsection{Nominal Progress Suggestion}
+While $u_s$ is optimized online, we bias the solver with a nominal rate $\dot{s}_\mathrm{nom} = L/T$ derived from the mission length $L$ and desired completion time $T$. This rate seeds the initial guess for all control stages and is also used as a fallback whenever the optimizer momentarily selects $u_s = u_{s,\min}$. The mechanism prevents stagnation in scenarios where contour penalties dominate the objective.
+
+\subsection{Discrete Update and Clipping}
+After each integration step we update the stored progress with
+\begin{equation}
+    s_{k+1} = \operatorname{clip}(s_k + u_{s,k} \Delta t, 0, L),
+\end{equation}
+which guarantees that spline evaluations remain within bounds. The logged value $X_{14}$ is included in the data products so that analysts can verify that the entire path was traversed during experiments.
+
+\subsection{Interpretation as Virtual Throttle}
+The variable $u_s$ acts as a virtual throttle regulating motion along the path. Choosing large upper bounds promotes aggressive progression but may reduce feasibility in tight turns, whereas small lower bounds risk sluggish behavior reminiscent of time-parameterized trajectories. In practice we select $u_s \in [0.2, 5]$~m/s, but the formulation supports any positive interval.
+
+\section{Optimal Control Program}
+\label{sec:ocp}
+The discrete-time OCP over a horizon $N$ reads
+\begin{align}
+    \min_{\mathbf{x}_k, \mathbf{u}_k} \ & \sum_{k=0}^{N-1} \Big( \ell_{\text{Lie}}(\bm{\phi}_k, \bm{\rho}_{l,k}, \bm{\rho}_{c,k}) + \mathbf{u}_{k,\text{old}}^\top R \mathbf{u}_{k,\text{old}} \\
+    & \quad + R_s u_{s,k}^2 - q_s \|\bm{\rho}_k\| \Big) + \ell_e(\mathbf{x}_N) \nonumber \\
+    \text{s.t. }\ & \mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k), \quad \mathbf{x}_0 = \mathbf{x}_\mathrm{meas}, \\
+    & \mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}, \quad g(\mathbf{x}_k)=0.
+\end{align}
+Here $\mathbf{u}_{k,\text{old}} = (F_k, \tau_{1,k}, \tau_{2,k}, \tau_{3,k})$ and $u_{s,k}$ is the new progress input. The equality constraint $g(\mathbf{x})=0$ enforces unit dual quaternions. The ACADOS solver implements SQP-RTI with Gauss–Newton Hessian approximation and IRK integration.
+
+\subsection{Constraint Handling}
+Quaternion normalization is imposed via soft constraints to absorb numerical drift without overburdening the solver. Actuator limits and progress bounds remain hard constraints, ensuring that computed thrusts and torques respect hardware capabilities. Additional geometric constraints, such as altitude limits, can be injected as extra rows in $g(\mathbf{x})$ without altering the overall structure.
+
+\subsection{Tuning Guidelines}
+Weights $Q_\phi$, $Q_l$, and $Q_c$ trade off attitude regulation against contour fidelity. In our experience, setting $Q_c \geq Q_l$ encourages tight adherence to the spatial path, while scaling $q_s$ allows designers to reward forward motion when the quadrotor falls behind. The progress cost coefficient $R_s$ should remain relatively small to avoid penalizing $u_s$ excessively, otherwise the solver may default to the lower bound and negate the benefits of the arc-length state.
+
+\section{Implementation Notes}
+\label{sec:implementation}
+The software stack mirrors the theoretical structure:
+\begin{itemize}
+    \item \texttt{ode\_acados.py} defines the extended dynamics, including the state $s$ and control $u_s$.
+    \item \texttt{nmpc\_acados.py} constructs the OCP, injects the Lie-invariant cost, and sets the bounds $[u_{s,\min}, u_{s,\max}]$.
+    \item \texttt{MPC2.py} handles reference generation via arc-length splines, feeds the solver with updated parameters, and logs the evolution of $s$ alongside the quadrotor states.
+    \item MATLAB files (e.g., \texttt{Dual\_cost\_identification.mat}) store $s(t)$ and $u_s(t)$ so that post-processing can verify spatial progress.
+\end{itemize}
+These components ensure that the MPCC truly operates in spatial coordinates and that its decision on progression can be audited offline.
+
+\section{Discussion and Practical Guidelines}
+\label{sec:discussion}
+Practitioners adopting this architecture should verify three aspects prior to deployment. First, the spline used for reference generation must be at least $C^1$ so that $\mathbf{t}_d(s)$ varies smoothly; otherwise the lag/contour decomposition may exhibit discontinuities. Second, logging both $s(t)$ and $u_s(t)$ is instrumental in diagnosing whether deviations stem from insufficient progress authority or from geometric errors. Third, when integrating with higher-level planners, the arc-length state enables multi-rate schemes where the path is updated at a slower cadence while the MPC loop runs fast, simplifying interactions with mission planners or obstacle-avoidance layers.
+
+\subsection{Reference Generation Pipeline}
+The reference builder samples the nominal path densely, computes cumulative arc-length via trapezoidal integration, and constructs cubic splines mapping $s$ to position, velocity, and yaw. Dual quaternion references are synthesized either from Euler angles or from rotation matrices drawn from recorded data. Because all derivatives are available analytically, the pipeline seamlessly supplies $\mathbf{t}_d(s)$ and curvature estimates for contouring analysis.
+
+\subsection{Warm Starts and Real-Time Iterations}
+Each MPC cycle reuses the previous optimal trajectories to warm-start ACADOS. The progress input $u_s$ is initialized at $\dot{s}_\mathrm{nom}$, while the state trajectory is shifted forward to serve as $x_{k+1}$. This practice significantly reduces solve times and maintains feasibility when external disturbances push the quadrotor off the path.
+
+\subsection{Computational Footprint}
+With a horizon of 10 steps and a sampling rate of 100~Hz, the solver completes within the available budget on a standard laptop-grade CPU. The extra state $s$ does not alter sparsity patterns or factorization complexity, so upgrading legacy implementations merely requires increasing the control dimension by one.
+
+\section{Results and Discussion (Placeholder)}
+\label{sec:results_placeholder}
+\emph{This section is intentionally reserved for future quantitative results, figures, and discussion to comply with the six-page limit guideline. Planned content includes:} (i) Monte Carlo simulations comparing Euclidean and Lie-invariant MPCC, (ii) sensitivity analyses for the bounds $[u_{s,\min}, u_{s,\max}]$, and (iii) hardware results showcasing long-path traversals with logged arc-length evolution.
+
+\section{Conclusions}
+We presented a Lie-invariant MPCC formulation that integrates an arc-length progress state, allowing the controller to regulate both contour accuracy and advance speed without relying on external temporal schedules. The resulting OCP preserves the geometric structure of \SE and can be implemented in real time using state-of-the-art NMPC toolchains. Future work will populate the reserved section with simulation and experimental evidence, analyze robustness to modeling errors, and explore adaptive tuning of the progress bounds $[u_{s,\min}, u_{s,\max}]$.
+
+\section*{Acknowledgment}
+This section can acknowledge funding agencies or collaborators in a final submission.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

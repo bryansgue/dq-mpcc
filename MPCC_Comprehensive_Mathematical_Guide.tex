@@ -1,0 +1,1311 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% Theorem environments
+\newtheorem{theorem}{Teorema}[section]
+\newtheorem{definition}[theorem]{Definición}
+\newtheorem{lemma}[theorem]{Lema}
+\newtheorem{corollary}[theorem]{Corolario}
+\newtheorem{remark}[theorem]{Observación}
+
+\title{Guía Matemática Definitiva: MPCC en Cuaterniones Duales y Grupos de Lie}
+\author{Control de UAVs en $SE(3)$ mediante Contouring Pose-Acoplado}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ============================================================================
+\section{Preliminares: Grupos de Lie y Álgebras de Lie}
+\label{sec:lie_preliminares}
+% ============================================================================
+
+\subsection{Definición de Grupo de Lie}
+
+\begin{definition}[Grupo de Lie]
+Un \emph{grupo de Lie} $G$ es un grupo que también es una variedad diferenciable suave tal que:
+\begin{enumerate}
+    \item La operación de grupo $\mu: G \times G \to G$, definida por $\mu(g,h) = g \cdot h$, es suave.
+    \item La inversión $i: G \to G$, definida por $i(g) = g^{-1}$, es suave.
+\end{enumerate}
+
+Esto permite combinar la estructura algebraica (grupo) con la geométrica (variedad diferenciable).
+\end{definition}
+
+\subsection{El Grupo Especial Ortogonal $SO(3)$}
+
+\begin{definition}[$SO(3)$]
+El grupo especial ortogonal tridimensional es:
+\begin{equation}
+    SO(3) = \{ R \in \mathbb{R}^{3 \times 3} \mid R^\top R = I_3, \, \det(R) = 1 \}.
+\end{equation}
+
+Sus elementos representan rotaciones en $\mathbb{R}^3$. La operación de grupo es la multiplicación matricial.
+\end{definition}
+
+\begin{remark}
+$SO(3)$ es un grupo de Lie de dimensión 3, ya que sus elementos dependen de 3 parámetros independientes (como ángulos de Euler).
+\end{remark}
+
+\subsection{El Grupo Especial Euclideano $SE(3)$}
+
+\begin{definition}[$SE(3)$]
+El grupo especial euclideano es:
+\begin{equation}
+    SE(3) = SO(3) \ltimes \mathbb{R}^3 = \left\{ (R, \mathbf{p}) \mid R \in SO(3), \, \mathbf{p} \in \mathbb{R}^3 \right\}.
+\end{equation}
+
+La operación de grupo es:
+\begin{equation}
+    (R_1, \mathbf{p}_1) \circ (R_2, \mathbf{p}_2) = (R_1 R_2, R_1 \mathbf{p}_2 + \mathbf{p}_1).
+\end{equation}
+
+El elemento identidad es $(I_3, \mathbf{0})$, y la inversa es:
+\begin{equation}
+    (R, \mathbf{p})^{-1} = (R^\top, -R^\top \mathbf{p}).
+\end{equation}
+\end{definition}
+
+\begin{remark}
+$SE(3)$ es un grupo de Lie de dimensión 6. Sus elementos combinan una rotación (3 grados de libertad) y una traslación (3 grados de libertad).
+\end{remark}
+
+\subsection{Álgebra de Lie $\mathfrak{so}(3)$}
+
+\begin{definition}[Álgebra de Lie]
+El \emph{álgebra de Lie} $\mathfrak{g}$ asociada a un grupo de Lie $G$ es el espacio tangente al grupo en la identidad, $T_e G$.
+\end{definition}
+
+\begin{definition}[$\mathfrak{so}(3)$]
+El álgebra de Lie de $SO(3)$ es:
+\begin{equation}
+    \mathfrak{so}(3) = \{ \phi^\wedge \in \mathbb{R}^{3 \times 3} \mid \phi^\wedge + (\phi^\wedge)^\top = 0 \}.
+\end{equation}
+
+Aquí, el operador $\wedge : \mathbb{R}^3 \to \mathfrak{so}(3)$ convierte un vector $\phi = [\phi_1, \phi_2, \phi_3]^\top$ en su matriz sesgada:
+\begin{equation}
+    \phi^\wedge = \begin{pmatrix}
+        0 & -\phi_3 & \phi_2 \\
+        \phi_3 & 0 & -\phi_1 \\
+        -\phi_2 & \phi_1 & 0
+    \end{pmatrix}.
+\end{equation}
+
+Equivalentemente, se identifica $\mathfrak{so}(3) \cong \mathbb{R}^3$ mediante este mapeo.
+\end{definition}
+
+\begin{remark}
+La operación de Lie en $\mathfrak{so}(3)$ es el \emph{corchete de Lie}:
+\begin{equation}
+    [\phi, \psi] = \phi^\wedge \psi^\wedge - \psi^\wedge \phi^\wedge = (\phi \times \psi)^\wedge,
+\end{equation}
+donde $\times$ es el producto vectorial en $\mathbb{R}^3$.
+\end{remark}
+
+\subsection{Álgebra de Lie $\mathfrak{se}(3)$}
+
+\begin{definition}[$\mathfrak{se}(3)$]
+El álgebra de Lie de $SE(3)$ es:
+\begin{equation}
+    \mathfrak{se}(3) = \mathfrak{so}(3) \times \mathbb{R}^3 \cong \mathbb{R}^6.
+\end{equation}
+
+Un elemento genérico de $\mathfrak{se}(3)$ se representa como un par $(\phi, \rho)$ donde $\phi \in \mathbb{R}^3$ (velocidad angular) y $\rho \in \mathbb{R}^3$ (velocidad lineal en coordenadas del cuerpo).
+\end{definition}
+
+\subsection{Mapas Exponencial y Logarítmico}
+
+\begin{definition}[Mapa Exponencial]
+El \emph{mapa exponencial} $\exp: \mathfrak{g} \to G$ mapea elementos del álgebra de Lie a elementos del grupo:
+\begin{equation}
+    \exp(\xi) = \sum_{n=0}^{\infty} \frac{\xi^n}{n!}.
+\end{equation}
+
+Para $SO(3)$, si $\phi \in \mathbb{R}^3$ con norma $\|\phi\| = \theta$, entonces:
+\begin{equation}
+    \exp(\phi^\wedge) = I_3 + \frac{\sin\theta}{\theta}\phi^\wedge + \frac{1-\cos\theta}{\theta^2}(\phi^\wedge)^2.
+\end{equation}
+
+Esta es la \textbf{fórmula de Rodrigues}.
+\end{definition}
+
+\begin{definition}[Mapa Logarítmico]
+El \emph{mapa logarítmico} $\log: G \to \mathfrak{g}$ es el inverso (local) del mapa exponencial:
+\begin{equation}
+    \log(g) = \text{argumento tal que } \exp(\log(g)) = g.
+\end{equation}
+
+Para una matriz de rotación $R \in SO(3)$:
+\begin{equation}
+    \phi = \arccos\left(\frac{\text{tr}(R)-1}{2}\right) \frac{\text{vech}(R - R^\top)}{2\sin\phi},
+\end{equation}
+donde $\text{vech}$ extrae los elementos subdiagonales de la matriz sesgada.
+\end{definition}
+
+% ============================================================================
+\section{Cuaterniones y Cuaterniones Duales}
+\label{sec:quaternions}
+% ============================================================================
+
+\subsection{Cuaterniones Unitarios}
+
+\begin{definition}[Cuaternión]
+Un \emph{cuaternión} es un número hipercomple­jo de la forma:
+\begin{equation}
+    q = q_w + q_x \mathbf{i} + q_y \mathbf{j} + q_z \mathbf{k},
+\end{equation}
+donde $q_w, q_x, q_y, q_z \in \mathbb{R}$ y $\mathbf{i}, \mathbf{j}, \mathbf{k}$ son unidades imaginarias que satisfacen:
+\begin{equation}
+    \mathbf{i}^2 = \mathbf{j}^2 = \mathbf{k}^2 = \mathbf{i}\mathbf{j}\mathbf{k} = -1.
+\end{equation}
+
+Alternativamente, escribimos $q = (q_w, \mathbf{q}_v)$ donde $q_w$ es la parte escalar y $\mathbf{q}_v = [q_x, q_y, q_z]^\top$ es la parte vectorial.
+\end{definition}
+
+\begin{definition}[Cuaternión Unitario]
+Un \emph{cuaternión unitario} satisface:
+\begin{equation}
+    \|q\|^2 = q_w^2 + q_x^2 + q_y^2 + q_z^2 = 1.
+\end{equation}
+
+El conjunto de cuaterniones unitarios forma el grupo de Lie $S^3$ (la esfera 3-dimensional), isomorfo a $SU(2)$, que es un recubrimiento doble de $SO(3)$.
+\end{definition}
+
+\begin{theorem}[Cuaterniones y Rotaciones]
+Todo cuaternión unitario $q = (\cos(\theta/2), \sin(\theta/2) \, \hat{\mathbf{n}})$ representa una rotación de ángulo $\theta$ alrededor del eje $\hat{\mathbf{n}}$.
+
+La rotación de un vector $\mathbf{v} \in \mathbb{R}^3$ (como cuaternión puro $\mathbf{v}' = (0, \mathbf{v})$) es:
+\begin{equation}
+    \mathbf{v}_{\text{rotado}} = q \circ \mathbf{v}' \circ q^*,
+\end{equation}
+donde $\circ$ denota la multiplicación de cuaterniones y $q^* = (q_w, -\mathbf{q}_v)$ es el conjugado.
+\end{theorem}
+
+\subsection{Multiplicación de Cuaterniones}
+
+Para dos cuaterniones $q_1 = (q_{1w}, \mathbf{q}_{1v})$ y $q_2 = (q_{2w}, \mathbf{q}_{2v})$:
+\begin{equation}
+    q_1 \circ q_2 = (q_{1w}q_{2w} - \mathbf{q}_{1v} \cdot \mathbf{q}_{2v}, q_{1w}\mathbf{q}_{2v} + q_{2w}\mathbf{q}_{1v} + \mathbf{q}_{1v} \times \mathbf{q}_{2v}).
+\end{equation}
+
+\subsection{Cuaterniones Duales}
+
+\begin{definition}[Unidad Dual]
+La \emph{unidad dual} $\varepsilon$ es un número formal que satisface:
+\begin{equation}
+    \varepsilon^2 = 0, \quad \text{pero} \quad \varepsilon \neq 0.
+\end{equation}
+
+Esto permite construir una extensión de los cuaterniones.
+\end{definition}
+
+\begin{definition}[Cuaternión Dual]
+Un \emph{cuaternión dual} es de la forma:
+\begin{equation}
+    \hat{q} = q_r + \varepsilon q_d,
+\end{equation}
+donde $q_r, q_d \in \mathbb{H}$ son cuaterniones ordinarios.
+
+Escribimos también $\hat{q} = (q_{rw}, \mathbf{q}_{rv}, q_{dw}, \mathbf{q}_{dv})$ como vector en $\mathbb{R}^8$.
+\end{definition}
+
+\begin{definition}[Cuaternión Dual Unitario]
+Un cuaternión dual es \emph{unitario} si:
+\begin{equation}
+    \|q_r\| = 1, \quad q_r \circ q_d + q_d \circ q_r = 0.
+\end{equation}
+
+La segunda condición se conoce como la \emph{ortogonalidad dual}.
+\end{definition}
+
+\subsection{Representación de la Pose con Cuaterniones Duales}
+
+\begin{theorem}[Pose en Cuaternión Dual]
+La pose de un cuerpo rígido en $SE(3)$ puede representarse de manera única mediante un cuaternión dual unitario:
+\begin{equation}
+    \hat{q} = q_r + \frac{\varepsilon}{2} (\mathbf{p} \circ q_r),
+\end{equation}
+donde:
+\begin{itemize}
+    \item $q_r \in S^3$ es un cuaternión unitario representando la orientación (rotación),
+    \item $\mathbf{p} = (0, p_x, p_y, p_z)$ es el cuaternión puro de la posición,
+    \item $\circ$ denota multiplicación de cuaterniones.
+\end{itemize}
+
+El factor $\frac{1}{2}$ es una convención que simplifica las ecuaciones de evolución.
+\end{theorem}
+
+\begin{remark}
+Esta representación es \emph{compacta} (8 parámetros) pero con 2 restricciones (unitaridad de $q_r$ y ortogonalidad dual), dejando 6 grados de libertad efectivos, que corresponde a la dimensión de $SE(3)$.
+\end{remark}
+
+\subsection{Multiplicación de Cuaterniones Duales}
+
+Para $\hat{q}_1 = q_{r1} + \varepsilon q_{d1}$ y $\hat{q}_2 = q_{r2} + \varepsilon q_{d2}$:
+\begin{equation}
+    \hat{q}_1 \circ \hat{q}_2 = (q_{r1} \circ q_{r2}) + \varepsilon (q_{r1} \circ q_{d2} + q_{d1} \circ q_{r2}).
+\end{equation}
+
+Esta operación respeta la estructura de composición de movimientos rígidos.
+
+% ============================================================================
+\section{Logaritmo de Cuaterniones Duales}
+\label{sec:dual_log}
+% ============================================================================
+
+\subsection{Logaritmo de un Cuaternión Ordinario}
+
+\begin{definition}[Logaritmo Quaterniónico]
+Para un cuaternión unitario $q = (q_w, \mathbf{q}_v)$, el logaritmo (en la álgebra de Lie $\mathfrak{so}(3) \cong \mathbb{R}^3$) es:
+\begin{equation}
+    \log(q) = \arccos(q_w) \frac{\mathbf{q}_v}{\|\mathbf{q}_v\|} \in \mathbb{R}^3,
+\end{equation}
+cuando $\mathbf{q}_v \neq 0$.
+
+Para pequeños ángulos, $\log(q) \approx 2\mathbf{q}_v$.
+\end{definition}
+
+\begin{remark}
+El logaritmo quaterniónico da como resultado un vector $\phi \in \mathbb{R}^3$ cuya norma es el ángulo de rotación y cuya dirección es el eje de rotación.
+\end{remark}
+
+\subsection{Logaritmo de un Cuaternión Dual Unitario}
+
+\begin{theorem}[Logaritmo Dual]
+Para un cuaternión dual unitario $\hat{q}_e = q_{re} + \varepsilon q_{de}$ representando un error de pose, el logaritmo es:
+\begin{equation}
+    \log(\hat{q}_e) = \phi + \frac{\varepsilon}{2} \rho,
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\phi = \log(q_{re}) \in \mathbb{R}^3$ es el error rotacional (en $\mathfrak{so}(3)$),
+    \item $\rho \in \mathbb{R}^3$ es el error translacional en el álgebra de Lie.
+\end{itemize}
+
+El resultado es un elemento del álgebra de Lie dual $\mathfrak{se}(3)$, que puede identificarse con $\mathbb{R}^6$ mediante la codificación $(\phi, \rho)$.
+\end{theorem}
+
+\begin{remark}
+Este mapeo logarítmico es fundamental pues convierte errores de pose (que viven en el grupo $SE(3)$) a errores algebraicos (que viven en el álgebra tangente $\mathfrak{se}(3)$), los cuales son más susceptibles al análisis y control.
+\end{remark}
+
+\subsection{Cálculo Explícito del Error Translacional $\rho$}
+
+\begin{theorem}[Relación entre $\rho$ y Desplazamiento de Posición]
+Sea $(R_e, \mathbf{p}_e)$ el error de pose en forma de rotación-traslación (obtenido de la parte real del cuaternión dual). Entonces:
+\begin{equation}
+    \rho = J_l(\phi)^{-1} R_d^\top (\mathbf{p} - \mathbf{p}_d),
+    \label{eq:rho_jacobian}
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\phi = \log(R_e)$ es el ángulo de rotación,
+    \item $J_l(\phi)$ es el \emph{Jacobiano izquierdo} de $SO(3)$,
+    \item $R_d$ es la rotación deseada,
+    \item $\mathbf{p}$, $\mathbf{p}_d$ son las posiciones actual y deseada.
+\end{itemize}
+\end{theorem}
+
+\begin{proof}[Esbozo]
+El error de pose en cuaternión dual es $\hat{q}_e = \hat{q}_d^* \circ \hat{q}$. Expandiendo esta composición y aplicando la definición de logaritmo dual, se obtiene que la componente translacional $\rho$ codifica la "corrección de traslación local" que debe aplicarse en el álgebra de Lie. La presencia de $J_l(\phi)^{-1}$ surge de la linearización de la exponencial en $SO(3)$, capturando cómo la rotación modula el espacio tangente de traslaciones.
+\end{proof}
+
+% ============================================================================
+\section{El Jacobiano Izquierdo de $SO(3)$}
+\label{sec:left_jacobian}
+% ============================================================================
+
+\subsection{Definición y Propiedades Fundamentales}
+
+\begin{definition}[Jacobiano Izquierdo]
+El \emph{Jacobiano izquierdo} $J_l: \mathbb{R}^3 \to \mathbb{R}^{3 \times 3}$ se define como:
+\begin{equation}
+    J_l(\phi) = \frac{\partial}{\partial \varepsilon} \exp((\phi + \varepsilon \mathbf{v})^\wedge) \bigg|_{\varepsilon=0},
+\end{equation}
+donde la derivada se toma respecto al parámetro perturbador $\varepsilon$.
+
+Alternativamente, es la derivada de la exponencial matricial respecto a variaciones infinitesimales en la dirección izquierda.
+\end{definition}
+
+\begin{theorem}[Fórmula Explícita del Jacobiano Izquierdo]
+Para $\phi \in \mathbb{R}^3$ con norma $\theta = \|\phi\|$:
+\begin{equation}
+    J_l(\phi) = I_3 + \frac{1-\cos\theta}{\theta^2}\phi^\wedge + \frac{\theta - \sin\theta}{\theta^3}(\phi^\wedge)^2,
+    \label{eq:J_l_formula}
+\end{equation}
+donde $\phi^\wedge$ es la matriz sesgada asociada.
+
+Para pequeños ángulos ($\theta \ll 1$), la aproximación de primer orden es:
+\begin{equation}
+    J_l(\phi) \approx I_3 + \frac{1}{2}\phi^\wedge.
+\end{equation}
+\end{theorem}
+
+\begin{lemma}[Invertibilidad del Jacobiano Izquierdo]
+Para todo $\phi \in \mathbb{R}^3$, la matriz $J_l(\phi)$ es invertible. Su inversa puede computarse como:
+\begin{equation}
+    J_l(\phi)^{-1} = I_3 - \frac{1}{2}\phi^\wedge + \left(\frac{1}{\theta^2} - \frac{1+\cos\theta}{2\theta\sin\theta}\right)(\phi^\wedge)^2,
+\end{equation}
+para $\theta \neq 0$.
+\end{lemma}
+
+\begin{remark}[Significado Geométrico]
+El Jacobiano $J_l(\phi)$ describe cómo las velocidades en el álgebra de Lie se transforman bajo rotaciones. Cuando la rotación es pequeña, la transformación es casi la identidad, pero para rotaciones grandes, aparecen términos cuadráticos que capturan la curvatura de $SO(3)$.
+\end{remark}
+
+\subsection{Interpretación en el Contexto de Error de Pose}
+
+En la ecuación \eqref{eq:rho_jacobian}, el término $J_l(\phi)^{-1}$ captura la siguiente idea:
+\begin{itemize}
+    \item La diferencia de posición $R_d^\top (\mathbf{p} - \mathbf{p}_d)$ está expresada en el frame deseado.
+    \item El Jacobiano $J_l(\phi)^{-1}$ "compensa" el efecto de la rotación en la velocidad lineal.
+    \item El resultado $\rho$ es la "corrección de traslación en el álgebra de Lie" que, cuando exponenciada con la rotación, restaura la pose deseada.
+\end{itemize}
+
+% ============================================================================
+\section{Dinámica del Quadrotor en Cuaterniones Duales}
+\label{sec:uav_dynamics}
+% ============================================================================
+
+\subsection{Representación de Estado}
+
+El estado del quadrotor se compone de:
+\begin{equation}
+    \mathbf{x} = \begin{pmatrix} \hat{q} \\ \hat{\omega} \end{pmatrix} \in \mathbb{H}_D \times \mathbb{H}_D,
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\hat{q}$ es el cuaternión dual unitario que representa la pose (posición + orientación),
+    \item $\hat{\omega}$ es el cuaternión dual que representa el twist (velocidad angular + lineal).
+\end{itemize}
+
+En coordenadas Euclideas equivalentes:
+\begin{equation}
+    \mathbf{x} = \begin{pmatrix} \mathbf{p} \\ q \\ \mathbf{v} \\ \boldsymbol{\omega} \end{pmatrix} \in \mathbb{R}^3 \times S^3 \times \mathbb{R}^3 \times \mathbb{R}^3,
+\end{equation}
+un total de 14 estados (con 2 restricciones de normalizacion, dejando 12 grados de libertad efectivos para un sistema no-holonómico controlado).
+
+\subsection{Cinemática}
+
+La evolución de la pose viene dada por:
+\begin{equation}
+    \dot{\hat{q}} = \frac{1}{2} \hat{q} \circ \hat{\omega},
+    \label{eq:pose_kinematics}
+\end{equation}
+donde $\hat{\omega}$ es el twist dual (velocidades angular y lineal).
+
+En términos de cuaternión ordinario y posición:
+\begin{align}
+    \dot{q} &= \frac{1}{2} q \circ \hat{\boldsymbol{\omega}}_r, \\
+    \dot{\mathbf{p}} &= \mathbf{v},
+\end{align}
+donde $\hat{\boldsymbol{\omega}}_r = (0, \boldsymbol{\omega})$ es el cuaternión puro de velocidad angular.
+
+\subsection{Dinámica Rotacional (Ecuación de Euler)}
+
+Para un cuerpo rígido con tensor de inercia $J \in \mathbb{R}^{3 \times 3}$ (usualmente diagonal):
+\begin{equation}
+    J \dot{\boldsymbol{\omega}} = \boldsymbol{\tau} - \boldsymbol{\omega} \times (J \boldsymbol{\omega}),
+    \label{eq:euler_equation}
+\end{equation}
+donde $\boldsymbol{\tau}$ es el torque de control aplicado.
+
+Despejando la aceleración angular:
+\begin{equation}
+    \dot{\boldsymbol{\omega}} = J^{-1} [\boldsymbol{\tau} - \boldsymbol{\omega} \times (J \boldsymbol{\omega})].
+\end{equation}
+
+\subsection{Dinámica Translacional (Ecuación de Newton)}
+
+La aceleración lineal en el frame inercial es:
+\begin{equation}
+    m \ddot{\mathbf{p}} = \mathbf{F}_{\text{thrust}} + \mathbf{F}_{\text{gravity}} + \mathbf{F}_{\text{aerodynamics}},
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\mathbf{F}_{\text{thrust}} = F R \mathbf{e}_3$ es la fuerza de empuje (en el frame inercial), con $F \geq 0$ siendo la magnitud,
+    \item $\mathbf{F}_{\text{gravity}} = -mg\mathbf{e}_3$ es la fuerza gravitatoria,
+    \item $\mathbf{F}_{\text{aerodynamics}} = -D \mathbf{v}$ es el arrastre aerodinámico (lineal, en el frame del cuerpo transformado al inercial).
+\end{itemize}
+
+\begin{remark}
+Aquí, $R \in SO(3)$ es la matriz de rotación extraída del cuaternión $q$ (ver Apéndice para la conversión explícita).
+\end{remark}
+
+En el frame del cuerpo, la dinámica es más compacta. Definiendo la velocidad en el frame del cuerpo como:
+\begin{equation}
+    \mathbf{v}_b := R^\top \dot{\mathbf{p}} = R^\top \mathbf{v},
+\end{equation}
+la aceleración en el frame del cuerpo es:
+\begin{equation}
+    \dot{\mathbf{v}}_b = \frac{F}{m}\mathbf{e}_3 - g R^\top \mathbf{e}_3 + \mathbf{v}_b \times \boldsymbol{\omega} - D \mathbf{v}_b,
+    \label{eq:accel_body_frame}
+\end{equation}
+donde:
+\begin{itemize}
+    \item El primer término es el empuje normalizado por masa,
+    \item El segundo es la gravedad proyectada al frame del cuerpo,
+    \item El tercero es el término de Coriolis (aceleración centrífuga en frame rotante),
+    \item El cuarto es el arrastre aerodinámico.
+\end{itemize}
+
+\subsection{Dinámica Completa en Forma de Cuaternión Dual}
+
+Combinando todos los términos, la dinámica completa del twist dual es:
+\begin{equation}
+    \dot{\hat{\omega}} = \hat{f}(\hat{q}, \hat{\omega}) + \hat{u}(\mathbf{u}),
+    \label{eq:dual_dynamics_complete}
+\end{equation}
+donde:
+
+\begin{itemize}
+    \item **Término de Deriva (Drift)**: Captura dinámicas no controladas,
+    \begin{equation}
+        \hat{f} = 
+        -J^{-1}(\boldsymbol{\omega} \times (J\boldsymbol{\omega}))
+        + \varepsilon \left[
+            \mathbf{v}_b \times \boldsymbol{\omega}
+            - g R^\top \mathbf{e}_3
+            - D \mathbf{v}_b
+        \right].
+    \end{equation}
+
+    \item **Entrada de Control (Input)**:
+    \begin{equation}
+        \hat{u} = 
+        J^{-1}\boldsymbol{\tau}
+        + \varepsilon \left(\frac{F}{m}\mathbf{e}_3\right).
+    \end{equation}
+\end{itemize}
+
+La ventaja de esta formulación dual es que **unifica translación y rotación** en un único objeto algebraico, facilitando el análisis geométrico y la síntesis de controles en el grupo $SE(3)$.
+
+\subsection{Arrastre Aerodinámico: Identificación Directa}
+
+\begin{definition}[Modelo de Arrastre Lineal]
+Bajo la hipótesis de que el arrastre es proporcional a la velocidad (válida para velocidades bajas):
+\begin{equation}
+    \mathbf{f}_d = -D \mathbf{v}_b, \quad D = \operatorname{diag}(d_x, d_y, d_z),
+\end{equation}
+donde $d_i > 0$ son los coeficientes de arrastre por eje en el frame del cuerpo.
+\end{definition}
+
+Para identificar los coeficientes $d_i$, se utiliza el método de **mínimos cuadrados directo** sin integración:
+
+\begin{theorem}[Identificación Directa de Arrastre]
+Dado un conjunto de $N$ mediciones $(t_k, \mathbf{p}_k, \mathbf{v}_k, \boldsymbol{\omega}_k, q_k)$, los coeficientes de arrastre pueden estimarse resolviendo:
+\begin{equation}
+    \min_{d_i} \sum_{k=1}^{N} \left[ f_{a,i}(k) + d_i v_{b,i}(k) \right]^2,
+\end{equation}
+donde $f_{a,i}(k)$ es la aceleración medida en el eje $i$ y $v_{b,i}(k)$ es la velocidad medida en ese eje (transformada al frame del cuerpo).
+
+La solución cerrada es:
+\begin{equation}
+    d_i^* = -\frac{\sum_{k=1}^{N} f_{a,i}(k) \, v_{b,i}(k)}{\sum_{k=1}^{N} v_{b,i}(k)^2}.
+\end{equation}
+\end{theorem}
+
+\begin{remark}[Ventajas del Método Directo]
+\begin{enumerate}
+    \item No requiere integración numérica (evita acumulación de errores),
+    \item Usa directamente mediciones de aceleración (derivadas numéricas de velocidad),
+    \item Resuelve un problema de mínimos cuadrados lineal (solución única y eficiente),
+    \item Los coeficientes identificados son físicamente interpretables.
+\end{enumerate}
+\end{remark}
+
+% ============================================================================
+\section{Formulación de Error de Pose en $SE(3)$}
+\label{sec:pose_error}
+% ============================================================================
+
+\subsection{Error de Pose Dual}
+
+Dada una pose deseada $\hat{q}_d \in \mathbb{H}_D$ (unitaria) y la pose actual $\hat{q} \in \mathbb{H}_D$ (unitaria), el error de pose se define mediante composición derecha:
+\begin{equation}
+    \hat{q}_e = \hat{q}_d^* \circ \hat{q},
+\end{equation}
+donde $^*$ denota conjugación dual.
+
+Este error representa el movimiento rígido que debe aplicarse para pasar de la pose deseada a la actual.
+
+\subsection{Interpretación Geométrica}
+
+Si escribimos $\hat{q}_d = (R_d, \mathbf{p}_d)$ y $\hat{q} = (R, \mathbf{p})$ en forma explícita, entonces:
+\begin{equation}
+    (R_e, \mathbf{p}_e) := (R_d^T R, R_d^T(\mathbf{p} - \mathbf{p}_d))
+\end{equation}
+representa el error rotacional y translacional, ambos expresados en el frame deseado.
+
+\subsection{Logaritmo del Error de Pose}
+
+Aplicando el mapeo logarítmico dual:
+\begin{equation}
+    \log(\hat{q}_e) = \phi + \frac{\varepsilon}{2} \rho,
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\phi = \log(R_e) \in \mathbb{R}^3$ es el error rotacional en $\mathfrak{so}(3)$,
+    \item $\rho = J_l(\phi)^{-1} R_d^T (\mathbf{p} - \mathbf{p}_d) \in \mathbb{R}^3$ es el error translacional en $\mathfrak{se}(3)$.
+\end{itemize}
+
+Esta representación es **mínima** (6 parámetros en lugar de 8) y **libre de restricciones**, facilitando la optimización.
+
+% ============================================================================
+\section{MPCC Clásico vs MPCC en Cuaterniones Duales}
+\label{sec:mpcc_classical_vs_dual}
+% ============================================================================
+
+\subsection{MPCC Clásico (en $\mathbb{R}^3$)}
+
+\begin{definition}[MPCC Clásico]
+En espacios Euclideanos, el objetivo de contouring es descomponer el error de posición $\mathbf{e} = \mathbf{p} - \mathbf{p}_d$ en componentes tangencial y normal respecto a una curva de referencia parametrizada por $\theta$:
+
+\begin{equation}
+    \mathbf{e}_l = (\mathbf{e} \cdot \mathbf{t}) \mathbf{t}, \quad \mathbf{e}_c = \mathbf{e} - \mathbf{e}_l,
+\end{equation}
+donde $\mathbf{t}$ es el vector tangente unitario a la curva.
+
+El costo MPCC es:
+\begin{equation}
+    J_{\text{MPCC}} = \sum_{k=0}^{N-1} \left[ w_l \|\mathbf{e}_{l,k}\|^2 + w_c \|\mathbf{e}_{c,k}\|^2 - q_s \theta_k + \|u_k\|_R^2 \right].
+\end{equation}
+\end{definition}
+
+\begin{remark}[Limitaciones en Robótica Aérea]
+\begin{enumerate}
+    \item El error $\mathbf{e}$ es puramente **posicional**: ignora desalineamientos de orientación.
+    \item La descomposición es **Euclideana**: no respeta la estructura geométrica de $SE(3)$.
+    \item Para UAVs, donde orientación y translación están **acopladas**, esto puede resultar en estrategias de control subóptimas.
+    \item No existe una métrica natural para penalizar la orientación en relación al contouring.
+\end{enumerate}
+\end{remark}
+
+\subsection{MPCC en Cuaterniones Duales (Pose-Acoplado)}
+
+\begin{definition}[MPCC Pose-Acoplado]
+Utilizando el error de pose logarítmico dual $(\phi, \rho)$, se define una descomposición análoga pero que respeta la geometría de $SE(3)$:
+
+\begin{equation}
+    \rho_l = (\rho \cdot \hat{\rho}_d) \hat{\rho}_d, \quad \rho_c = \rho - \rho_l,
+\end{equation}
+donde $\hat{\rho}_d$ es la dirección normalizada del error translacional en la pose deseada.
+
+El costo MPCC generalizado es:
+\begin{equation}
+    J_{\text{MPCC-Dual}} = \sum_{k=0}^{N-1} \left[ 
+        w_\phi \|\phi_k\|^2 + w_l \|\rho_{l,k}\|^2 + w_c \|\rho_{c,k}\|^2 - q_s \|\rho_k\| + \|u_k\|_R^2 
+    \right].
+    \label{eq:mpcc_dual_cost}
+\end{equation}
+\end{definition}
+
+\subsection{Ventajas de la Formulación Dual}
+
+\begin{enumerate}
+    \item **Geometría Respetada**: Los errores viven naturalmente en $\mathfrak{se}(3)$, el espacio tangente de $SE(3)$.
+    \item **Acoplamiento Pose**: El error translacional $\rho$ ya incorpora el efecto de la rotación a través del Jacobiano $J_l(\phi)^{-1}$.
+    \item **Penalización de Orientación**: El término $w_\phi \|\phi_k\|^2$ penaliza explícitamente desalineamientos de actitud.
+    \item **Consistencia Controlador-Planta**: La formulación es compatible con las dinámicas naturales del UAV, que evolucionan en $SE(3)$.
+    \item **Regularidad Matemática**: Elimina singularidades asociadas con proyecciones Euclideanas en espacios curvos.
+\end{enumerate}
+
+\subsection{Relación Límite: Recuperación del MPCC Clásico}
+
+\begin{corollary}[Límite Euclideano]
+Cuando el error rotacional $\phi \to 0$ (es decir, la orientación está bien alineada), el Jacobiano izquierdo satisface $J_l(\phi) \to I_3$, por lo que:
+\begin{equation}
+    \rho \approx R_d^T (\mathbf{p} - \mathbf{p}_d).
+\end{equation}
+
+En este régimen, la descomposición dual $(\rho_l, \rho_c)$ recupera la descomposición Euclideana clásica, confirmando que la formulación dual es una **extensión consistente** del MPCC tradicional.
+\end{corollary}
+
+% ============================================================================
+\section{Proyección Lie-Invariante en Detalle}
+\label{sec:lie_projection}
+% ============================================================================
+
+\subsection{Motivación}
+
+El vector $\rho \in \mathbb{R}^3$ representa el error translacional total en el álgebra de Lie. Para separarlo en componentes de arrastre (lag) y contorno (contouring), es tentador usar una proyección Euclideana ordinaria sobre la dirección del vector tangente de la trayectoria. Sin embargo, esta aproximación **no respeta la estructura invariante del álgebra de Lie**. 
+
+La proyección **Lie-invariante** corrige este problema al asegurar que la métrica de proyección es compatible con la estructura geométrica subyacente.
+
+\subsection{Descomposición de Norma y Dirección}
+
+Para $\rho \in \mathbb{R}^3$, definimos:
+\begin{equation}
+    \|\rho\| = \sqrt{\rho_x^2 + \rho_y^2 + \rho_z^2},
+\end{equation}
+\begin{equation}
+    \hat{\rho} = \frac{\rho}{\|\rho\| + \varepsilon}, \quad \varepsilon = 10^{-8} \text{ (regularización numérica)}.
+\end{equation}
+
+\subsection{Vector Tangente en el Frame Deseado}
+
+Sea $t^w \in \mathbb{R}^3$ el vector tangente unitario a la trayectoria de referencia en el frame inercial. Transformamos al frame deseado:
+\begin{equation}
+    t^d = R_d^T t^w,
+\end{equation}
+donde $R_d$ es la rotación deseada extraída del cuaternión $q_d$.
+
+\subsection{Proyecciones Lie-Invariantes}
+
+\begin{definition}[Proyección Lie-Invariante de Arrastre y Contorno]
+Definimos:
+\begin{equation}
+    \rho_l := (\rho \cdot \hat{\rho}_d) \hat{\rho}_d = (t^d \cdot \rho) t^d,
+    \label{eq:rho_lag_projection}
+\end{equation}
+\begin{equation}
+    \rho_c := \rho - \rho_l = \left[I_3 - t^d (t^d)^T\right] \rho.
+    \label{eq:rho_contour_projection}
+\end{equation}
+
+Donde $t^d (t^d)^T$ es el proyector de rango 1 sobre la dirección tangente, e $[I_3 - t^d(t^d)^T]$ es el proyector de rango 2 sobre el complemento ortogonal (plano normal a la trayectoria).
+\end{definition}
+
+\begin{remark}[Interpretación Geométrica]
+\begin{itemize}
+    \item $\rho_l$ es la "componente de arrastre": qué tan adelantado/atrasado está el vehículo respecto a su posición deseada a lo largo de la trayectoria.
+    \item $\rho_c$ es la "componente de contorno": cuánto se desvía lateralmente de la trayectoria deseada.
+\end{itemize}
+\end{remark}
+
+\subsection{Propiedades de los Proyectores}
+
+\begin{lemma}[Propiedades de los Proyectores Ortogonales]
+Los proyectores satisfacen:
+\begin{equation}
+    P_{\parallel} := t^d (t^d)^T, \quad P_{\perp} := I_3 - P_{\parallel},
+\end{equation}
+con propiedades:
+\begin{enumerate}
+    \item **Idempotencia**: $P_{\parallel}^2 = P_{\parallel}$, $P_{\perp}^2 = P_{\perp}$.
+    \item **Simetría**: $P_{\parallel}^T = P_{\parallel}$, $P_{\perp}^T = P_{\perp}$.
+    \item **Ortogonalidad Mutua**: $P_{\parallel} P_{\perp} = P_{\perp} P_{\parallel} = 0$.
+    \item **Rango**: $\operatorname{rank}(P_{\parallel}) = 1$, $\operatorname{rank}(P_{\perp}) = 2$.
+    \item **Traza**: $\operatorname{tr}(P_{\parallel}) = 1$, $\operatorname{tr}(P_{\perp}) = 2$.
+\end{enumerate}
+\end{lemma}
+
+\subsection{Descomposición Ortogonal}
+
+La descomposición es ortogonal en el sentido Euclideano estándar:
+\begin{equation}
+    \|\rho\|^2 = \|\rho_l\|^2 + \|\rho_c\|^2.
+\end{equation}
+
+Esta propiedad garantiza que la penalización de lag y contour no es redundante.
+
+\subsection{Métrica Ad-Invariante}
+
+\begin{definition}[Métrica Ad-Invariante en $\mathfrak{se}(3)$]
+En lugar de usar la métrica Euclideana estándar, se puede definir una métrica que respete la estructura de grupo:
+\begin{equation}
+    \langle (\phi, \rho), (\phi', \rho') \rangle_{\text{Ad}} = \lambda \|\phi\|^2 + \mu \|\rho\|^2,
+\end{equation}
+donde $\lambda, \mu > 0$ son pesos que pueden ser ajustados según la importancia relativa de la orientación y translación.
+\end{definition}
+
+\begin{remark}
+Esta métrica es \emph{ad-invariante} en el sentido de que es preservada por la acción adjunta del grupo de Lie, lo que garantiza que la penalización respeta la simetría geométrica del problema.
+\end{remark}
+
+\subsection{Función de Costo Completa con Proyección Lie-Invariante}
+\label{subsec:mpcc_cost_function}
+
+La función de costo del MPCC combina varios términos:
+
+\begin{equation}
+\boxed{
+    J = \sum_{k=0}^{N-1} \ell_k(\mathbf{x}_k, \mathbf{u}_k) + \ell_e(\mathbf{x}_N)
+}
+    \label{eq:mpcc_complete_cost}
+\end{equation}
+
+donde el costo de etapa es:
+
+\begin{equation}
+    \ell_k = \underbrace{Q_{\text{ln}} \, \xi_k^\top Q_l \, \xi_k}_{\text{Error dual logarítmico}} 
+           + \underbrace{Q_{\text{ec}} \|\rho_{c,k}\|^2}_{\text{Error de contorneo}} 
+           + \underbrace{Q_{\text{el}} \|\rho_{l,k}\|^2}_{\text{Error de lag}}
+           + \underbrace{\mathbf{u}_k^\top R \, \mathbf{u}_k}_{\text{Regularización control}}
+           + \underbrace{Q_s (u_{s,\max} - u_{s,k})^2}_{\text{Maximización de progreso}}
+    \label{eq:stage_cost}
+\end{equation}
+
+donde $\xi_k = (\phi_k, \rho_k) \in \mathfrak{se}(3) \cong \mathbb{R}^6$ es el error logarítmico dual.
+
+\subsubsection{Término de Maximización de Progreso (Formulación Convexa)}
+
+El término clave para MPCC es la maximización de $u_s$. Consideremos las opciones:
+
+\begin{enumerate}
+    \item \textbf{Formulación no convexa} (NO usar): $-q_s u_s^2$
+    \begin{equation}
+        \frac{d^2}{d u_s^2}\left(-q_s u_s^2\right) = -2 q_s < 0 \quad \text{(Hessiano negativo $\Rightarrow$ cóncavo)}
+    \end{equation}
+    Esto causa problemas en solvers QP que asumen convexidad.
+    
+    \item \textbf{Formulación convexa} (implementada):
+    \begin{equation}
+        \boxed{Q_s (u_{s,\max} - u_s)^2}
+        \label{eq:convex_progress}
+    \end{equation}
+    \begin{equation}
+        \frac{d^2}{d u_s^2}\left[Q_s (u_{s,\max} - u_s)^2\right] = 2 Q_s > 0 \quad \text{(Hessiano positivo $\Rightarrow$ convexo)}
+    \end{equation}
+\end{enumerate}
+
+\begin{remark}[Interpretación Geométrica]
+La función $Q_s(u_{s,\max} - u_s)^2$ es una parábola con mínimo en $u_s = u_{s,\max}$. Al minimizar este término, el optimizador \textbf{empuja} $u_s$ hacia su valor máximo, logrando el objetivo de maximizar el progreso de forma convexa.
+\end{remark}
+
+\subsubsection{Parámetros de Implementación}
+
+Los valores utilizados en la implementación son:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|c|c|l|}
+\hline
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Descripción} \\
+\hline
+$Q_{\text{ln}}$ & 10 & Peso del error logarítmico dual \\
+$Q_{\text{ec}}$ & 10 & Peso del error de contorneo \\
+$Q_{\text{el}}$ & 5 & Peso del error de lag \\
+$Q_s$ & 0.5 & Peso de maximización de progreso \\
+$u_{s,\min}$ & 0.2 m/s & Velocidad mínima de progreso \\
+$u_{s,\max}$ & 20 m/s & Velocidad máxima de progreso \\
+\hline
+\end{tabular}
+\caption{Parámetros de la función de costo MPCC.}
+\label{tab:cost_params}
+\end{table}
+
+% ============================================================================
+\section{Discretización y Formulación del Problema de Control Óptimo}
+\label{sec:discretization}
+% ============================================================================
+
+\subsection{Discretización de Tiempo}
+
+El horizonte de predicción se divide en $N$ pasos de tiempo con intervalo uniforme:
+\begin{equation}
+    t_k = k \Delta t, \quad k = 0, 1, \ldots, N,
+\end{equation}
+donde $\Delta t$ es el tiempo de muestreo (típicamente 0.05 segundos para control en tiempo real).
+
+La evolución dinámica se discretiza mediante integración numérica (Runge-Kutta implícito de tercer orden):
+\begin{equation}
+    \mathbf{x}_{k+1} = \mathbf{x}_k + \int_{t_k}^{t_{k+1}} f(\mathbf{x}(t), \mathbf{u}(t)) \, dt \approx \mathbf{x}_k + \Delta t \, f_{\text{IRK}}(\mathbf{x}_k, \mathbf{u}_k).
+\end{equation}
+
+\subsection{Formulación del Problema de Control Óptimo}
+
+\begin{definition}[OCP: Optimal Control Problem]
+El problema de control óptimo es:
+\begin{equation}
+\boxed{
+\begin{aligned}
+\min_{\mathbf{u}_{0:N-1}, \mathbf{x}_{0:N}} & \quad J = \sum_{k=0}^{N-1} \ell_k(\mathbf{x}_k, \mathbf{u}_k) + \ell_e(\mathbf{x}_N) \\
+\text{s.a.} & \quad \mathbf{x}_{k+1} = \mathbf{f}(\mathbf{x}_k, \mathbf{u}_k, \Delta t), \\
+& \quad \mathbf{x}_0 = \mathbf{x}_{\text{medido}}(t), \\
+& \quad \mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}, \quad k = 0, \ldots, N-1, \\
+& \quad g(\mathbf{x}_k) = 0, \quad k = 0, \ldots, N.
+\end{aligned}
+}
+\label{eq:ocp_formulation}
+\end{equation}
+
+Donde:
+\begin{itemize}
+    \item $\ell_k(\mathbf{x}_k, \mathbf{u}_k)$ es el costo en la etapa $k$ (ecuación \eqref{eq:mpcc_complete_cost}),
+    \item $\ell_e(\mathbf{x}_N)$ es el costo terminal,
+    \item $\mathbf{f}(\mathbf{x}_k, \mathbf{u}_k, \Delta t)$ es la dinámica discreta,
+    \item $g(\mathbf{x}_k)$ incluye restricciones algebraicas (normalización de cuaternión, etc.).
+\end{itemize}
+\end{definition}
+
+\subsection{Restricciones Específicas}
+
+\subsubsection{Restricción de Cuaternión Unitario}
+
+Para asegurar que el cuaternión se mantenga en la esfera unitaria:
+\begin{equation}
+    \|q_k\|^2 = 1, \quad k = 0, \ldots, N.
+\end{equation}
+
+En la práctica, esto se implementa mediante una penalización en el costo o una restricción dura.
+
+\subsubsection{Límites de Control}
+
+\begin{equation}
+    0 \leq F_k \leq F_{\max}, \quad \|\boldsymbol{\tau}_k\|_\infty \leq \tau_{\max}, \quad k = 0, \ldots, N-1.
+\end{equation}
+
+Para un quadrotor típico: $F_{\max} \approx 20$ N, $\tau_{\max} \approx 5$ Nm.
+
+\subsection{Métodos de Solución}
+
+El problema \eqref{eq:ocp_formulation} es un **programa no lineal (NLP)** de gran escala. Se resuelve usando:
+
+\begin{enumerate}
+    \item **Condensación**: Eliminar variables de estado $\mathbf{x}_k$ expresándolas en términos de $\mathbf{x}_0$ y $\mathbf{u}_{0:N-1}$, reduciendo la dimensionalidad.
+    \item **Métodos de Punto Interior (IPM)**: Solucionador de subproblemas cuadráticos (QP).
+    \item **SQP-RTI**: Algoritmo de programación cuadrática secuencial con iteración en tiempo real, permitiendo una actualización rápida del control en cada ciclo.
+\end{enumerate}
+
+% =========================================================================
+\section{Estado de Longitud de Arco y Control de Progreso}
+\label{sec:arc_length_progress}
+% =========================================================================
+
+La clave del MPCC es el \textbf{desacoplamiento entre tiempo y progreso geométrico}. A diferencia de un seguidor de trayectoria temporal, donde la referencia en el instante $t$ es fija ($\gamma(t)$), en MPCC la referencia depende del progreso actual $s$, que es controlable.
+
+\subsection{Curva de Referencia Parametrizada por Longitud de Arco}
+
+Sea $\gamma : [0, L]\to SE(3)$ una curva suave de pose parametrizada por longitud de arco $s$:
+\begin{equation}
+    \gamma(s) = \big(R_d(s), \mathbf{p}_d(s)\big), \quad s \in [0, L].
+\end{equation}
+
+La condición de parametrización natural implica:
+\begin{equation}
+    \left\| \frac{d \mathbf{p}_d}{d s}(s) \right\| = 1, \qquad \forall s \in [0,L].
+    \label{eq:arc_param}
+\end{equation}
+
+De este modo, el vector tangente unitario $\mathbf{t}_d(s) := d\mathbf{p}_d / ds$ representa la \textbf{dirección de avance} sobre la trayectoria.
+
+\subsection{Extensión del Vector de Estado}
+
+El estado original del quadrotor:
+\begin{equation}
+    \mathbf{x}_{\text{original}} = (\hat{q}, \boldsymbol{\omega}_b, \mathbf{v}_b) \in \mathbb{H}_D \times \mathbb{R}^3 \times \mathbb{R}^3 \cong \mathbb{R}^{14}
+\end{equation}
+
+se extiende con el escalar de progreso $s$:
+\begin{equation}
+    \mathbf{x}_{\text{ext}} = (\hat{q}, \boldsymbol{\omega}_b, \mathbf{v}_b, s) \in \mathbb{R}^{15}, \qquad s(t) \in [0, L].
+\end{equation}
+
+En la implementación, $s$ es la componente número 15 del vector de estado (índice 14 en Python).
+
+\subsection{Dinámica del Progreso y Entrada de Control Extendida}
+
+La evolución del progreso sobre la curva es gobernada por una entrada de control adicional $u_s$:
+\begin{equation}
+    \boxed{\dot{s}(t) = u_s(t)}, \qquad u_{s,\min} \leq u_s(t) \leq u_{s,\max}.
+    \label{eq:s_dynamics}
+\end{equation}
+
+El vector de control extendido es:
+\begin{equation}
+    \mathbf{u}_{\text{ext}} = \begin{pmatrix}F \\ \tau_1 \\ \tau_2 \\ \tau_3 \\ u_s\end{pmatrix} \in \mathbb{R}^5,
+\end{equation}
+donde $F$ es el empuje, $\tau_i$ son los torques, y $u_s$ es la \textbf{velocidad de progreso sobre la trayectoria}.
+
+\begin{remark}[Interpretación Física de $u_s$]
+$u_s$ tiene unidades de $[\text{m/s}]$ y representa la velocidad a la que el ``punto virtual de referencia'' avanza sobre la curva. El MPCC \textbf{optimiza} este valor para maximizar el progreso mientras minimiza los errores de seguimiento.
+\end{remark}
+
+\subsection{Generación de Referencias Dependientes de $s$}
+
+En cada instante de muestreo $t_k$, las referencias se evalúan en el progreso actual $s_k$:
+\begin{align}
+    \mathbf{p}_d &= \texttt{position\_by\_arc\_length}(s_k), \\
+    q_d &= \texttt{quaternion\_by\_arc\_length}(s_k), \\
+    \mathbf{t}_d &= \texttt{velocity\_by\_arc\_length}(s_k).
+\end{align}
+
+El cuaternión dual de referencia se construye como:
+\begin{equation}
+    \hat{q}_d(s_k) = \texttt{dualquat\_from\_pose}(q_d, \mathbf{p}_d).
+\end{equation}
+
+\subsection{Actualización del Progreso en el Loop de Control}
+
+En cada iteración del MPC:
+
+\begin{enumerate}
+    \item \textbf{Resolver OCP}: El solver optimiza $u_s^*$ junto con las fuerzas y torques.
+    
+    \item \textbf{Integrar progreso}: 
+    \begin{equation}
+        s_{k+1} = s_k + u_s^* \cdot \Delta t
+    \end{equation}
+    
+    \item \textbf{Limitar al target}:
+    \begin{equation}
+        s_{k+1} = \operatorname{clip}(s_{k+1}, 0, s_{\text{target}})
+    \end{equation}
+    
+    \item \textbf{Actualizar referencia}: Evaluar $\gamma(s_{k+1})$ para el siguiente paso.
+\end{enumerate}
+
+\subsection{Horizonte de Predicción con Referencias Dinámicas}
+
+Para el horizonte de predicción $j = 0, \ldots, N-1$, las referencias se calculan proyectando el progreso futuro:
+\begin{equation}
+    s_{\text{pred},j} = s_k + j \cdot \Delta t \cdot u_{s,\max}
+\end{equation}
+
+Esto permite al MPC ``mirar adelante'' sobre la trayectoria y planificar óptimamente.
+
+\subsection{El Desacoplamiento Tiempo-Geometría}
+
+El mecanismo fundamental es:
+
+\begin{center}
+\begin{tabular}{|c|c|}
+\hline
+\textbf{MPC Tradicional} & \textbf{MPCC} \\
+\hline
+Referencia = $\gamma(t_k)$ & Referencia = $\gamma(s_k)$ \\
+$t$ avanza con el reloj & $s$ es optimizado por el MPC \\
+Velocidad implícita & Velocidad $u_s$ es variable de decisión \\
+\hline
+\end{tabular}
+\end{center}
+
+El MPCC \textbf{decide el ritmo} al cual avanza sobre la trayectoria porque:
+\begin{enumerate}
+    \item El error se evalúa en $\gamma(s)$, no en $\gamma(t)$.
+    \item La dinámica $\dot{s} = u_s$ es controlable.
+    \item El costo incluye un término que incentiva maximizar $u_s$.
+\end{enumerate}
+
+% ============================================================================
+\section{Análisis de Estabilidad y Convergencia}
+\label{sec:stability}
+% ============================================================================
+
+\subsection{Resumen de la Formulación OCP Implementada}
+\label{subsec:ocp_summary}
+
+El problema de control óptimo resuelto en cada iteración del MPCC es:
+
+\begin{equation}
+\boxed{
+\begin{aligned}
+\min_{\mathbf{u}_{0:N-1}} \quad & \sum_{k=0}^{N-1} \Big[
+    Q_{\text{ln}} \, \xi_k^\top Q_l \, \xi_k 
+    + Q_{\text{ec}} \|\rho_{c,k}\|^2 
+    + Q_{\text{el}} \|\rho_{l,k}\|^2 \\
+    & \qquad\qquad + \mathbf{u}_k^\top R \, \mathbf{u}_k
+    + Q_s (u_{s,\max} - u_{s,k})^2
+\Big] + V_f(\mathbf{x}_N) \\
+\text{s.a.} \quad 
+& \mathbf{x}_{k+1} = f(\mathbf{x}_k, \mathbf{u}_k), \quad k = 0,\ldots,N-1, \\
+& \mathbf{x}_0 = \mathbf{x}_{\text{medido}}, \\
+& \|q_k\|^2 = 1, \quad k = 0,\ldots,N, \\
+& \mathbf{u}_{\min} \leq \mathbf{u}_k \leq \mathbf{u}_{\max}, \quad k = 0,\ldots,N-1.
+\end{aligned}
+}
+\end{equation}
+
+Donde el estado extendido $\mathbf{x} \in \mathbb{R}^{15}$ y el control extendido $\mathbf{u} \in \mathbb{R}^5$ son:
+
+\begin{equation}
+\mathbf{x} = \begin{pmatrix}
+q_w \\ q_x \\ q_y \\ q_z \\ t_x \\ t_y \\ t_z \\ q_{\varepsilon w} \\
+\omega_x \\ \omega_y \\ \omega_z \\
+v_x \\ v_y \\ v_z \\
+s
+\end{pmatrix} \in \mathbb{R}^{15}, \qquad
+\mathbf{u} = \begin{pmatrix}
+F \\ \tau_x \\ \tau_y \\ \tau_z \\ u_s
+\end{pmatrix} \in \mathbb{R}^5.
+\end{equation}
+
+\subsection{Flujo de Datos del MPCC}
+\label{subsec:mpcc_dataflow}
+
+El algoritmo MPCC ejecuta el siguiente ciclo en cada instante de muestreo:
+
+\begin{enumerate}
+    \item \textbf{Medición}: Obtener estado actual $\mathbf{x}_{\text{actual}}$ y progreso $s_k$.
+    
+    \item \textbf{Generación de Referencias}: Para cada etapa $j \in \{0, \ldots, N-1\}$:
+    \begin{align}
+        s_j &= s_k + j \cdot \Delta t \cdot u_{s,\max}, \\
+        \mathbf{p}_{d,j} &= \texttt{position\_by\_arc\_length}(\min(s_j, L)), \\
+        q_{d,j} &= \texttt{quaternion\_by\_arc\_length}(\min(s_j, L)), \\
+        \mathbf{t}_{d,j} &= \texttt{velocity\_by\_arc\_length}(\min(s_j, L)).
+    \end{align}
+    
+    \item \textbf{Cálculo de Errores}: Para cada etapa, computar:
+    \begin{itemize}
+        \item Error dual: $\hat{q}_e = \hat{q}_d^* \circ \hat{q}$
+        \item Error logarítmico: $\xi = (\phi, \rho) = \ln(\hat{q}_e)$
+        \item Proyección lag/contour: $\rho_l = (\rho \cdot \mathbf{t}_d) \mathbf{t}_d$, $\rho_c = \rho - \rho_l$
+    \end{itemize}
+    
+    \item \textbf{Resolver OCP}: El solver ACADOS encuentra $\mathbf{u}^*_{0:N-1}$.
+    
+    \item \textbf{Aplicar Control}: Ejecutar $\mathbf{u}_0^* = (F^*, \boldsymbol{\tau}^*, u_s^*)$.
+    
+    \item \textbf{Actualizar Progreso}: 
+    \begin{equation}
+        s_{k+1} = \operatorname{clip}\big(s_k + u_s^* \cdot \Delta t, 0, L\big).
+    \end{equation}
+\end{enumerate}
+
+\subsection{Pseudocódigo del Loop Principal}
+
+\begin{algorithm}[H]
+\caption{MPCC Loop Principal}
+\begin{algorithmic}[1]
+\State $s \gets 0$ \Comment{Inicializar progreso}
+\While{$s < L$}
+    \State $\mathbf{x} \gets \texttt{read\_state}()$
+    \For{$j = 0$ \textbf{to} $N-1$}
+        \State $s_j \gets s + j \cdot \Delta t \cdot u_{s,\max}$
+        \State $\hat{q}_{d,j} \gets \gamma(\min(s_j, L))$ \Comment{Referencia por arco}
+        \State $\texttt{set\_reference}(j, \hat{q}_{d,j})$
+    \EndFor
+    \State $\mathbf{u}^* \gets \texttt{solve\_OCP}(\mathbf{x})$
+    \State $\texttt{apply\_control}(\mathbf{u}^*_0)$
+    \State $s \gets s + u_s^* \cdot \Delta t$ \Comment{Integrar progreso}
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Estabilidad Local}
+
+\begin{theorem}[Estabilidad Local del Control MPCC Dual]
+Bajo condiciones de regularidad (controlabilidad local, integrabilidad de la trayectoria deseada), si la ponderación del término de progreso $q_s$ es suficientemente grande y los pesos de lag $Q_l$ y contour $Q_c$ son suficientemente grandes, entonces existe una vecindad del equilibrio en la cual el control MPCC converge exponencialmente a la trayectoria deseada.
+\end{theorem}
+
+\begin{proof}[Esbozo]
+La prueba utiliza una función de Lyapunov candidata basada en el error de pose dual:
+\begin{equation}
+    V = \|\phi\|^2 + \|\rho_c\|^2,
+\end{equation}
+y demuestra que su derivada es negativa definida bajo las condiciones de ponderación. Esto garantiza convergencia asintótica local.
+\end{proof}
+
+\subsection{Alcance de Convergencia}
+
+El radio de convergencia depende de:
+\begin{itemize}
+    \item La proximidad inicial a la trayectoria deseada,
+    \item La curvatura de la trayectoria (cambios rápidos en $t^d$ pueden reducir el radio),
+    \item Los pesos $Q_\phi, Q_l, Q_c$ (pesos más altos amplían el radio),
+    \item La magnitud del tiempo de muestreo $\Delta t$ (tiempos más pequeños mejoran la precisión).
+\end{itemize}
+
+% ============================================================================
+\section{Detalles de Implementación}
+\label{sec:implementation}
+% ============================================================================
+
+\subsection{Estructura de Archivos}
+
+La implementación del MPCC en cuaterniones duales consiste en los siguientes módulos:
+
+\begin{itemize}
+    \item \texttt{nmpc\_acados.py}: Definición del OCP, función de costo y restricciones.
+    \item \texttt{ode\_acados.py}: Dinámica del sistema, funciones de álgebra de Lie.
+    \item \texttt{MPC2.py}: Loop principal del MPCC, generación de referencias.
+    \item \texttt{functions.py}: Utilidades para splines, interpolación y plotting.
+\end{itemize}
+
+\subsection{Función de Costo en CasADi/ACADOS}
+
+La función de costo se implementa en \texttt{nmpc\_acados.py}:
+
+\begin{verbatim}
+# Error logarítmico dual
+ln_error = ln_dual(q_error)  # [phi; rho] in R^6
+
+# Costo del error de pose
+pose_cost = 10 * ln_error.T @ Q_l @ ln_error
+
+# Costo de regularización del control
+control_cost = u.T @ R @ u
+
+# Errores de lag y contour
+rho_l, rho_c = lie_invariant_projection(phi, rho, tangent_d)
+error_lag = Q_el * rho_l.T @ rho_l
+error_contour = Q_ec * rho_c.T @ rho_c
+
+# Maximización convexa del progreso
+arc_speed_penalty = Q_s * (u_s_max - u[4])**2
+
+# Costo total
+cost = pose_cost + control_cost + error_lag + error_contour + arc_speed_penalty
+\end{verbatim}
+
+\subsection{Implementación del Jacobiano Izquierdo}
+
+La función \texttt{left\_jacobian\_SO3} en \texttt{ode\_acados.py}:
+
+\begin{verbatim}
+def left_jacobian_SO3(phi):
+    theta = ca.norm_2(phi)
+    
+    # Coeficientes de la serie
+    c = (1 - ca.cos(theta)) / (theta**2 + eps)
+    d = (theta - ca.sin(theta)) / (theta**3 + eps)
+    
+    # Matriz sesgada
+    phi_skew = skew(phi)
+    
+    # J_l = I + c*phi^ + d*(phi^)^2
+    J_l = ca.MX.eye(3) + c*phi_skew + d*(phi_skew @ phi_skew)
+    return J_l
+\end{verbatim}
+
+\subsection{Cálculo del Error Translacional $\rho$}
+
+La función \texttt{compute\_rho\_translational\_error}:
+
+\begin{verbatim}
+def compute_rho_translational_error(phi, q_desired, state, state_desired):
+    # Extraer posiciones
+    p = state[4:7]
+    p_d = state_desired[4:7]
+    
+    # Rotación deseada R_d
+    R_d = quat_to_rotmat(q_desired)
+    
+    # Diferencia de posición en frame deseado
+    delta_p = R_d.T @ (p - p_d)
+    
+    # Jacobiano izquierdo inverso
+    J_l_inv = left_jacobian_SO3_inv(phi)
+    
+    # rho = J_l^{-1} R_d^T (p - p_d)
+    rho = J_l_inv @ delta_p
+    return rho
+\end{verbatim}
+
+\subsection{Proyección Lie-Invariante}
+
+La función \texttt{lie\_invariant\_projection}:
+
+\begin{verbatim}
+def lie_invariant_projection(phi, rho, tangent_desired):
+    # Normalizar tangente
+    t_norm = tangent_desired / (ca.norm_2(tangent_desired) + eps)
+    
+    # Proyección lag (componente paralela)
+    rho_lag_scalar = ca.dot(rho, t_norm)
+    rho_l = rho_lag_scalar * t_norm
+    
+    # Proyección contour (componente perpendicular)
+    rho_c = rho - rho_l
+    
+    return rho_l, rho_c
+\end{verbatim}
+
+\subsection{Parámetros del Solver ACADOS}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Parámetro} & \textbf{Valor} & \textbf{Descripción} \\
+\hline
+Horizonte $N$ & 20 & Número de etapas \\
+$\Delta t$ & 0.05 s & Tiempo de muestreo \\
+Solver QP & HPIPM & Interior point method \\
+Método NLP & SQP-RTI & Real-time iteration \\
+Integrador & IRK3 & Runge-Kutta implícito \\
+Tolerancia & $10^{-6}$ & Criterio de convergencia \\
+\hline
+\end{tabular}
+\caption{Parámetros del solver ACADOS.}
+\end{table}
+
+\subsection{Resultados Experimentales}
+
+Con la formulación convexa implementada, el sistema logra:
+
+\begin{itemize}
+    \item \textbf{Trayectoria}: 80 metros de longitud de arco.
+    \item \textbf{Tiempo de recorrido}: 4.01 segundos.
+    \item \textbf{Velocidad promedio}: 19.95 m/s (cercana a $u_{s,\max} = 20$ m/s).
+    \item \textbf{Error RMS contour}: $< 0.5$ m durante seguimiento.
+    \item \textbf{Tiempo de cómputo por iteración}: $\sim 5$ ms.
+\end{itemize}
+
+Esto demuestra que el MPCC efectivamente maximiza $u_s$ sujeto a las restricciones de seguimiento.
+
+% ============================================================================
+\section{Resumen Comparativo}
+\label{sec:summary}
+% ============================================================================
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Aspecto} & \textbf{MPCC Clásico ($\mathbb{R}^3$)} & \textbf{MPCC Dual ($SE(3)$)} \\
+\hline
+Espacio de Pose & $\mathbb{R}^3$ (solo posición) & $SE(3)$ (pose completa) \\
+\hline
+Representación Error & Posición: $\mathbf{p} - \mathbf{p}_d$ & Dual: $(\phi, \rho)$ \\
+\hline
+Acoplamiento Pose & No (independiente) & Sí (vía $J_l(\phi)^{-1}$) \\
+\hline
+Penalización Orientación & Secundaria/ausente & Explícita y fundamental \\
+\hline
+Consistencia Geométrica & Parcial & Completa (respeta $SE(3)$) \\
+\hline
+Complejidad Computacional & Baja & Moderada \\
+\hline
+Aplicabilidad UAVs & Limitada & Óptima \\
+\hline
+\end{tabular}
+\caption{Comparación MPCC Clásico vs MPCC Pose-Acoplado en Cuaterniones Duales.}
+\end{table}
+
+% ============================================================================
+\section{Conclusiones}
+\label{sec:conclusions}
+% ============================================================================
+
+La formulación de MPCC en cuaterniones duales representa una **extensión teóricamente rigurosa** del contouring de trayectorias clásico al grupo $SE(3)$. Los elementos clave son:
+
+\begin{enumerate}
+    \item **Representación de Pose Compacta**: Cuaterniones duales unitarios proporcionan una codificación de 8 parámetros (con 2 restricciones) de la pose completa, eliminando singularidades presentes en ángulos de Euler.
+    
+    \item **Error de Pose Logarítmico**: El mapeo logarítmico dual convierte errores en el grupo a vectores en el álgebra de Lie, facilitando la optimización y el análisis.
+    
+    \item **Jacobiano Izquierdo**: Captura cómo las velocidades angulares afectan las velocidades lineales en el espacio tangente, siendo central para la correcta formulación del error translacional $\rho$.
+    
+    \item **Proyección Lie-Invariante**: La descomposición de $\rho$ en componentes de lag y contour respeta la estructura geométrica del álgebra de Lie, a diferencia de proyecciones Euclideanas simples.
+    
+    \item **Acoplamiento Natural**: La dependencia de $\rho$ en $\phi$ (a través de $J_l(\phi)^{-1}$) captura automáticamente cómo la actitud modula la translación, una característica esencial en la robótica aérea.
+    
+    \item **Coherencia con Dinámicas Naturales**: El formulación es compatible con las dinámicas del quadrotor que evolucionan en $SE(3)$, sin requiere transformaciones innecesarias.
+\end{enumerate}
+
+Esta formulación abre caminos para futuro desarrollo en:
+\begin{itemize}
+    \item Análisis de estabilidad global (no solo local),
+    \item Garantías de robustez respecto a incertidumbres en el modelo,
+    \item Extensiones a sistemas con restricciones de entrada no convencionales,
+    \item Integración con métodos de aprendizaje por refuerzo en espacios geométricos.
+\end{itemize}
+
+\end{document}
